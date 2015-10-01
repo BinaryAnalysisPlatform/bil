@@ -1,0 +1,422 @@
+indexvar index, i, j, k, l, m, n ::= {{ com subscripts}}
+metavar id ::= {{ com a literal for variable}}
+metavar num  ::= {{ com number literal }}
+metavar string,str ::= {{ com quoted string literal }}
+
+grammar
+
+ stmt,s :: stmt_ ::=
+   | id := exp                                  ::      :: move
+   | jmp exp                                    ::      :: jump
+   | cpuexn ( int )
+   | special ( string )                         ::      :: special
+   | while ( exp ) { s1 ; .. ; sn }             ::      :: while
+   | if ( e ) { s1 ; .. ; sn }                  :: S    :: ifthen
+   | if ( e ) { s1 ; .. ; sn } else { s1 ; .. ; sm } :: :: if
+
+ exp,e :: exp_ ::=
+   | ( exp )                                    :: S    :: paren
+   | var                                        ::      :: var
+   | word                                       ::      :: int
+   | e1 [ e2 , endian ] : size                  ::      :: load
+   | e1 with [ e2 , endian ] : size <- e3       ::      :: store
+   | e1 bop e2                                  ::      :: binop
+   | uop e1                                     ::      :: unop
+   | cast : size [ e ]                          ::      :: cast
+   | let var = e1 in e2                         ::      :: let
+   | unknown [ string ] : type                  ::      :: unk
+   | if e1 then e2 else e3                      ::      :: ite
+   | extract : size1 : size2 [ e ]              ::      :: ext
+   | e1 ^ e2                                    ::      :: concat
+
+ var :: var_ ::=
+   | id : type                                  :: S    :: var
+
+ val,v :: val_ ::=
+   | word                                      :: M    :: imm
+   | v1 with [ v2 , endian ] : size <- v3      :: M    :: mem
+   | unknown [ string ] : type                 :: M    :: bot
+
+ word,w :: word_ ::=
+   | (w)                                        :: S    :: paren
+   | num : size                                 :: S    :: word
+   | 1 : size                                   :: S    :: one
+   | true                                       :: S    :: true
+   | false                                      :: S    :: false
+   | w1 .+ w2                                   :: S    :: plus
+        {{ tex [[w1]] \stackrel{bv} + [[w2]] }}
+   | w1 .- w2                                   :: S    :: minus
+        {{ tex [[w1]] \stackrel{bv} - [[w2]] }}
+   | w1 .* w2                                   :: S    :: times
+        {{ tex [[w1]] \stackrel{bv} * [[w2]] }}
+   | w1 ./ w2                                   :: S    :: div
+        {{ tex [[w1]] \stackrel{bv} / [[w2]] }}
+   | w1 ./$ w2                                   :: S    :: sdiv
+        {{ tex [[w1]] \stackrel{sbv} / [[w2]] }}
+   | w1 .% w2                                   :: S    :: mod
+        {{ tex [[w1]] \stackrel{bv} \% [[w2]] }}
+   | w1 .%$ w2                                   :: S    :: smod
+        {{ tex [[w1]] \stackrel{sbv} \% [[w2]] }}
+   | w1 .<< w2                                   :: S    :: lsl
+        {{ tex [[w1]] \stackrel{bv} \ll [[w2]] }}
+   | w1 .>> w2                                   :: S    :: lsr
+        {{ tex [[w1]] \stackrel{bv} \gg [[w2]] }}
+   | w1 .~>> w2                                   :: S    :: asr
+        {{ tex [[w1]] \stackrel{bv} \ggg [[w2]] }}
+   | w1 .& w2                                   :: S    :: land
+        {{ tex [[w1]] \stackrel{bv} \& [[w2]] }}
+   | w1 .| w2                                   :: S    :: lor
+        {{ tex [[w1]] \stackrel{bv} | [[w2]] }}
+   | w1 .xor w2                                   :: S    :: xor
+        {{ tex [[w1]] \stackrel{bv}{xor} [[w2]] }}
+   | w1 .< w2                                   :: S    :: less
+        {{ tex [[w1]] \stackrel{bv} < [[w2]] }}
+   | w1 .<$ w2                                   :: S    :: signed_less
+        {{ tex [[w1]] \stackrel{sbv} < [[w2]] }}
+   | w1 @ w2                                   :: S    :: concat
+        {{ tex [[w1]] \stackrel{bv} . [[w2]] }}
+   | ext word ~hi : sz1 ~lo : sz2           :: S    :: extend_extract
+   | ext_s word ~hi : sz1 ~lo : sz2         :: S    :: extend_extract_signed
+
+
+
+ bop :: binop_ ::=
+   | +                                          ::      :: plus
+   | -                                          ::      :: minus
+   | *                                          ::      :: times
+   | /                                          ::      :: divide
+   | /$                                         ::      :: sdivide
+        {{ tex \stackrel{signed} / }}
+   | %                                          ::      :: mod
+   | %$                                         ::      :: smod
+        {{ tex \stackrel{signed} \% }}
+   | '<<'                                       ::      :: lshift
+   | '>>'                                       ::      :: rshift
+   | '~>>'                                      ::      :: arshift
+   | &                                          ::      :: and
+   | |                                          ::      :: or
+   | xor                                        ::      :: xor
+   | =                                          ::      :: eq
+   | <>                                         ::      :: neq
+   | <                                          ::      :: lt
+   | '<='                                       ::      :: le
+   | '<$'                                       ::      :: slt
+        {{ tex \stackrel{signed} < }}
+   | '<=$'                                      ::      :: sle
+        {{ tex \stackrel{signed} \leq }}
+
+ uop :: unop_ ::=
+   | -                                          ::      :: neg
+   | ~                                          ::      :: not
+
+ size,sz :: size_ ::=
+   | 0                                          :: M    :: zero
+   | 1                                          :: M    :: one
+   | 8                                          :: M    :: byte
+   | size1 + size2                              :: M    :: size_plus
+   | size1 - size2                              :: M    :: size_minus
+   | ( size )                                   :: M    :: size_paren
+
+ endian,ed :: endian_ ::=
+   | el                                         ::      :: little
+   | be                                         ::      :: big
+
+ cast :: cast_ ::=
+   | low                                        ::      :: low
+   | high                                       ::      :: high
+   | signed                                     ::      :: signed
+   | unsigned                                   ::      :: unsinged
+
+ type,t :: type_ ::=
+   | reg_ size                                    ::      :: imm
+   | t1 ? t2                                    ::      :: mem
+
+ delta {{ tex \Delta}} :: '' ::=
+ | []                                           ::      :: nil
+ | delta [ var <- val ]                         ::      :: cons
+
+
+formula :: formula_ ::=
+ | judgement                ::   :: judgement
+ | ( formula )              :: M :: paren {{ coq ([[formula]]) }}
+ | not formula              :: M :: not {{ coq not [[formula]]}}
+ | e1 <> e2                 :: M :: exp_neq {{ coq ([[e1]] <> [[e2]]) }}
+
+terminals :: terminals_ ::=
+  | ->				::   ::	rarrow					{{ tex \rightarrow }}
+  | |-				::   :: vdash					{{ tex \vdash }}
+  | ~				::   :: lneg  					{{ tex \neg }}
+  | <-				::   :: larrow					{{ tex \leftarrow }}
+  | |->				::   :: mapsto					{{ tex \mapsto }}
+  | lambda			::   :: lambda					{{ tex \lambda }}
+  | ~>				::   :: leadsto					{{ tex \leadsto }}
+  | <>              ::   :: neq                     {{ tex \neq }}
+  | >>              ::   :: lsr                     {{ tex \gg}}
+  | ~>>             ::   :: asr                     {{ tex \ggg}}
+  | <<              ::   :: lsl                     {{ tex \ll}}
+
+
+subrules
+  val <:: exp
+
+defns helpers :: '' ::=
+ defn succ w1 = exp :: :: succ :: '' by
+
+ -------------------------------- :: succ
+ succ num:sz = num:sz1 .+ 1:sz1
+
+
+defns reduce_exp :: '' ::=
+
+ defn delta |- exp ~> exp' :: :: exp :: '' by
+
+
+ -------------------------------------------- :: var_reduce
+ delta[var <- v] |- var ~> v
+
+
+ delta |- var ~> v
+ var <> var'
+ -------------------------------------------- :: var_extend
+ delta[var' <- v'] |- var ~> v
+
+
+ {{com if variable is not found, then it evaluates to unknown value}}
+
+ -------------------------------------------- :: var_unknown
+  [] |- id:type ~> unknown [str] : type
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% LOAD                                              %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ {{ com Load expression is evaluated semi-lazily, first we evaluate an
+ address, then memory expression. Once memory expression is reduced to
+ a value, we start to reduce a symbolic memory object, until we end up
+ with a non-reducible value. The memory object is a sequence of nested
+ store expressions. Whenever we hit a storage to an unknown address we
+ stop reduction and reduce the whole load expression to an unknown val}}
+
+ delta |- e2 ~> v2
+ ------------------------------------- :: load_addr
+ delta |- e1[e2,ed]:sz ~> e1[v2,ed]:sz
+
+
+ delta |- e1 ~> v1
+ ------------------------------------- :: load_mem
+ delta |- e1[v2,ed]:sz ~> v1[v2,ed]:sz
+
+
+ ----------------------------------------------------------- :: load_byte
+ delta |- (v1 with [w,ed]:8 <- num:8)[w,ed]:8 ~> num:8
+
+ ------------------------------------------------------------------------------ :: load_un_addr
+ delta |- (v1 with [unknown[str]:t,ed]:8 <- v2)[v3,ed]:8 ~> unknown[str]:reg_8
+
+
+
+ w1 <> w2
+ ---------------------------------------------------------- :: load_rec
+ delta |- (v1 with [w1,ed]:8 <- v3)[w2,ed]:8 ~> v1[w2,ed]:8
+
+ ----------------------------------------------- :: load_un_mem
+ delta |- unknown[str]: t1?t2 ~> unknown[str]:t2
+
+ succ w = w'
+ --------------------------------------------------- :: load_word_be
+ delta |- v[w,be]:sz ~> v[w,be]:8 ^ v[w', be]:(sz-8)
+
+ succ w = w'
+ --------------------------------------------------- :: load_word_el
+ delta |- v[w,el]:sz ~> v[w',el]:(sz-8) ^ v[w,el]:8
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% STORE                                             %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+ delta |- e ~> v
+ ------------------------------------------------------------------------- :: store_val
+ delta |- e1 with [e2,ed]:sz <- e ~> e1 with [e2,ed] : sz <- v
+
+
+ delta |- e ~> v
+ ------------------------------------------------------------------------- :: store_addr
+ delta |- e1 with [e,ed]:sz <- val ~> e1 with [v,ed] : sz <- val
+
+
+ delta |- e ~> v
+ ------------------------------------------------------------------------- :: store_mem
+ delta |- e with [v1,ed]:sz <- val ~> v with [v1,ed] : sz <- val
+
+
+ delta |- e1 ~> v
+ ------------------------------------------------ :: let_head
+ delta |- let var = e1 in e2 ~> let var = v in e2
+
+
+ delta[var <- v] |- e ~> val
+ -------------------------------- :: let_body
+ delta |- let var = v in e ~> val
+
+
+ delta |- e1 ~> true
+ ------------------------------------ :: ite_true
+ delta |- if e1 then e2 else e3 ~> e2
+
+ delta |- e1 ~> false
+ ------------------------------------ :: ite_false
+ delta |- if e1 then e2 else e3 ~> e3
+
+
+ delta |- e2 ~> v
+ ------------------------------------- :: bop_rhs
+ delta |- e1 bop e2 ~> e1 bop v
+
+ delta |- e1 ~> v
+ ------------------------------------- :: bop_lhs
+ delta |- e1 bop v' ~> v bop v'
+
+
+ ----------------------------------------------- :: bop_unk_rhs
+ delta |- e bop unknown[str]:t ~> unknown[str]:t
+
+ ----------------------------------------------- :: bop_unk_lhs
+ delta |- unknown[str]:t bop e ~> unknown[str]:t
+
+
+ ---------------------------------------- :: plus
+ delta |- w1 + w2 ~> w1 .+ w2
+
+ ---------------------------------------- :: minus
+ delta |- w1 - w2 ~> w1 .- w2
+
+
+ ---------------------------------------- :: times
+ delta |- w1 * w2 ~> w1 .* w2
+
+
+ ---------------------------------------- :: div
+ delta |- w1 / w2 ~> w1 ./ w2
+
+
+ ----------------------------------------------- :: sdiv
+ delta |- w1 /$ w2 ~> w1 ./$ w2
+
+
+ ---------------------------------------- :: mod
+ delta |- w1 % w2 ~> w1 .% w2
+
+
+ ---------------------------------------- :: smod
+ delta |- w1 %$ w2 ~> w1 .%$ w2
+
+
+ ----------------------------------------------- :: lsl
+ delta |- w1 << w2 ~> w1 .<< w2
+
+ ----------------------------------------------- :: lsr
+ delta |- w1 >> w2 ~> w1 .>> w2
+
+ ----------------------------------------------- :: asr
+ delta |- w1 ~>> w2 ~> w1 .~>> w2
+
+
+ ----------------------------------------------- :: land
+ delta |- w1 & w2 ~> w1 .& w2
+
+ ----------------------------------------------- :: lor
+ delta |- w1 | w2 ~> w1 .| w2
+
+ ----------------------------------------------- :: xor
+ delta |- w1 xor w2 ~> w1 .xor w2
+
+
+ ----------------------------------------------- :: eq
+ delta |- w = w ~> true
+
+
+ ----------------------------------------------- :: neq
+ delta |- w <> w ~> false
+
+
+ ----------------------------------------------- :: less
+ delta |- w1 < w2 ~> w1 .< w2
+
+
+ delta |- w1 <> w2 ~> w
+ ----------------------------------------------- :: less_eq
+ delta |- w1 <= w2 ~> w & (w1 < w2)
+
+
+
+ ----------------------------------------------- :: signed_less
+ delta |- w1 <$ w2 ~> w1 .<$ w2
+
+ delta |- w1 <> w2 ~> w
+ ----------------------------------------------- :: signed_less_eq
+ delta |- w1 <=$ w2 ~> w & (w1 <$ w2)
+
+ delta |- e ~> v
+ ---------------------------------------- :: uop
+ delta |- uop e ~> uop v
+
+ ---------------------------------------- :: not_true
+ delta |- ~true ~> false
+
+
+ ---------------------------------------- :: not_false
+ delta |- ~false ~> true
+
+
+ delta |- e2 ~> v2
+ ---------------------------------------- :: concat_rhs
+ delta |- e1 ^ e2 ~> e1 ^ v2
+
+
+ delta |- e1 ~> v1
+ ---------------------------------------- :: concat_lhs
+ delta |- e1 ^ v2 ~> v1 ^ v2
+
+ ---------------------------------------------- :: concat_lhs_un
+ delta |- unknown[str]:t ^ v2 ~> unknown[str]:t
+
+ ---------------------------------------------- :: concat_rhs_un
+ delta |- v1 ^ unknown[str]:t ~> unknown[str]:t
+
+ ---------------------------------------- :: concat
+ delta |- w1 ^ w2 ~> w1 @ w2
+
+ delta |- e ~> v
+ ------------------------------------------------- :: extract_reduce
+ delta |- extract:sz1:sz2[e] ~> extract:sz1:sz2[v]
+
+
+ ---------------------------------------------------------- :: extract_un
+ delta |- extract:sz1:sz2[unknown[str]:t] ~> unknown[str]:t
+
+ ------------------------------------------------------ :: extract
+ delta |- extract:sz1:sz2[w] ~> ext w ~hi:sz1 ~lo:sz2
+
+ delta |- e ~> v
+ --------------------------------- :: cast_reduce
+ delta |- cast:sz[e] ~> cast:sz[v]
+
+
+ -------------------------------------------- :: cast_low
+ delta |- low:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
+
+
+ ----------------------------------------------------------- :: cast_high
+ delta |- high:sz[num:sz'] ~> ext num:sz' ~hi:sz' ~lo:(sz'-sz)
+
+
+ -------------------------------------------- :: cast_signed
+ delta |- signed:sz[w] ~> ext_s w ~hi:(sz-1) ~lo:0
+
+ -------------------------------------------- :: cast_unsigned
+ delta |- unsigned:sz[w] ~> low:sz[w]
