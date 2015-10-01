@@ -498,7 +498,7 @@ defns reduce_stmt :: '' ::=
 
 
 defns typing_exp :: '' ::=
- defn exp '::' type :: :: type :: t_ by
+ defn exp '::' type :: :: type_exp :: t_ by
 
 
  ----------------- :: var
@@ -572,3 +572,62 @@ defns typing_exp :: '' ::=
  e2 :: imm<sz2>
  ---------------------------------- :: concat
  e1 @ e2 :: imm<sz1+sz2>
+
+
+defns typing_stmt :: '' ::=
+ defn stmt is ok :: :: type_stmt :: t_ by
+
+
+ var :: t
+ exp :: t
+ --------------------------- :: move
+ var := exp is ok
+
+
+ exp :: imm<nat>
+ --------------------------- :: jmp
+ jmp exp is ok
+
+
+ --------------------------- :: cpuexn
+ cpuexn(num) is ok
+
+
+ ---------------------------- :: special
+ special(str) is ok
+
+
+ e :: imm<1>
+ seq is ok
+ ---------------------------- :: while
+ while (e) seq is ok
+
+
+ e :: imm<1>
+ seq is ok
+ ---------------------------- :: ifthen
+ if (e) seq is ok
+
+
+ e :: imm<1>
+ seq1 is ok
+ seq2 is ok
+ ---------------------------- :: if
+ if (e) seq1 else seq2 is ok
+
+
+ defn seq is ok :: :: type_seq :: t_ by
+
+ stmt is ok
+ ------------------------------ :: seq_one
+ {stmt}  is ok
+
+ s1 is ok
+ s2 is ok
+ ----------------------------- :: seq_two
+ {s1;s2} is ok
+
+ s1 is ok
+ {s2; ..; sn} is ok
+ ------------------------------ :: seq_rec
+ {s1; s2; ..; sn} is ok
