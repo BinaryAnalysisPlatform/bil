@@ -1,4 +1,4 @@
-indexvar index, i, j, k, l, m, n ::= {{ com subscripts}}
+indexvar index, m, n ::= {{ com subscripts}}
 metavar id ::= {{ com a literal for variable}}
 metavar num  ::= {{ com number literal }}
 metavar string,str ::= {{ com quoted string literal }}
@@ -22,15 +22,15 @@ grammar
    | ( exp )                                    :: S    :: paren
    | var                                        ::      :: var
    | word                                       ::      :: int
-   | e1 [ e2 , endian ] : size                  ::      :: load
-   | e1 with [ e2 , endian ] : size <- e3       ::      :: store
+   | e1 [ e2 , endian ] : nat                   ::      :: load
+   | e1 with [ e2 , endian ] : nat <- e3        ::      :: store
    | e1 bop e2                                  ::      :: binop
    | uop e1                                     ::      :: unop
-   | cast : size [ e ]                          ::      :: cast
+   | cast : nat [ e ]                           ::      :: cast
    | let var = e1 in e2                         ::      :: let
    | unknown [ string ] : type                  ::      :: unk
    | if e1 then e2 else e3                      ::      :: ite
-   | extract : size1 : size2 [ e ]              ::      :: ext
+   | extract : nat1 : nat2 [ e ]                ::      :: ext
    | e1 @ e2                                    ::      :: concat
 
  var :: var_ ::=
@@ -38,13 +38,13 @@ grammar
 
  val,v :: val_ ::=
    | word                                      :: M    :: imm
-   | v1 with [ v2 , endian ] : size <- v3      :: M    :: mem
+   | v1 with [ v2 , endian ] : nat <- v3       :: M    :: mem
    | unknown [ string ] : type                 :: M    :: bot
 
  word,w :: word_ ::=
    | (w)                                        :: S    :: paren
-   | num : size                                 :: S    :: word
-   | 1 : size                                   :: S    :: one
+   | num : nat                                 :: S    :: word
+   | 1 : nat                                   :: S    :: one
    | true                                       :: S    :: true
    | false                                      :: S    :: false
    | w1 .+ w2                                   :: S    :: plus
@@ -80,7 +80,7 @@ grammar
    | w1 .@ w2                                   :: S    :: concat
         {{ tex [[w1]] \stackrel{bv} . [[w2]] }}
    | ext word ~hi : sz1 ~lo : sz2           :: S    :: extend_extract
-   | ext_s word ~hi : sz1 ~lo : sz2         :: S    :: extend_extract_signed
+   | exts word ~hi : sz1 ~lo : sz2         :: S    :: extend_extract_signed
 
 
 
@@ -113,13 +113,13 @@ grammar
    | -                                          ::      :: neg
    | ~                                          ::      :: not
 
- size,sz :: size_ ::=
+ nat,sz :: nat_ ::=
    | 0                                          :: M    :: zero
    | 1                                          :: M    :: one
    | 8                                          :: M    :: byte
-   | size1 + size2                              :: M    :: size_plus
-   | size1 - size2                              :: M    :: size_minus
-   | ( size )                                   :: M    :: size_paren
+   | nat1 + nat2                              :: M    :: nat_plus
+   | nat1 - nat2                              :: M    :: nat_minus
+   | ( nat )                                   :: M    :: nat_paren
 
  endian,ed :: endian_ ::=
    | el                                         ::      :: little
@@ -132,19 +132,21 @@ grammar
    | unsigned                                   ::      :: unsinged
 
  type,t :: type_ ::=
-   | reg_ size                                    ::      :: imm
-   | t1 ? t2                                    ::      :: mem
+   | imm < nat >                                ::      :: imm
+   | mem < nat1 , nat2 >                        ::      :: mem
 
- delta {{ tex \Delta}} :: '' ::=
+ delta {{ tex \Delta}} :: delta_ ::=
  | []                                           ::      :: nil
  | delta [ var <- val ]                         ::      :: cons
-
 
 formula :: formula_ ::=
  | judgement                ::   :: judgement
  | ( formula )              :: M :: paren {{ coq ([[formula]]) }}
  | not formula              :: M :: not {{ coq not [[formula]]}}
  | e1 <> e2                 :: M :: exp_neq {{ coq ([[e1]] <> [[e2]]) }}
+ | nat1 > nat2              :: M :: nat_gt {{ coq ([[nat1]] > [[nat2]])}}
+ | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
+ | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
 
 terminals :: terminals_ ::=
   | ->				::   ::	rarrow					{{ tex \rightarrow }}
@@ -215,7 +217,7 @@ defns reduce_exp :: '' ::=
  delta |- (v1 with [w,ed]:8 <- num:8)[w,ed]:8 ~> num:8
 
  ------------------------------------------------------------------------------ :: load_un_addr
- delta |- (v1 with [unknown[str]:t,ed]:8 <- v2)[v3,ed]:8 ~> unknown[str]:reg_8
+ delta |- (v1 with [unknown[str]:t,ed]:8 <- v2)[v3,ed]:8 ~> unknown[str]:imm<8>
 
 
 
@@ -223,8 +225,8 @@ defns reduce_exp :: '' ::=
  ---------------------------------------------------------- :: load_rec
  delta |- (v1 with [w1,ed]:8 <- v3)[w2,ed]:8 ~> v1[w2,ed]:8
 
- ----------------------------------------------- :: load_un_mem
- delta |- unknown[str]: t1?t2 ~> unknown[str]:t2
+ ---------------------------------------------------------- :: load_un_mem
+ delta |- unknown[str]: mem<nat,sz> ~> unknown[str]:imm<sz>
 
  succ w = w'
  --------------------------------------------------- :: load_word_be
@@ -420,7 +422,7 @@ defns reduce_exp :: '' ::=
 
 
  -------------------------------------------- :: cast_signed
- delta |- signed:sz[w] ~> ext_s w ~hi:(sz-1) ~lo:0
+ delta |- signed:sz[w] ~> exts w ~hi:(sz-1) ~lo:0
 
  -------------------------------------------- :: cast_unsigned
  delta |- unsigned:sz[w] ~> low:sz[w]
@@ -493,3 +495,80 @@ defns reduce_stmt :: '' ::=
 
  ------------------------------------------------------------- :: seq_one
  delta,word |- {s1} ~> delta, word, {s1}
+
+
+defns typing_exp :: '' ::=
+ defn exp '::' type :: :: type :: t_ by
+
+
+ ----------------- :: var
+ id:t :: t
+
+ ----------------- :: int
+ num:sz :: imm<sz>
+
+
+ ----------------- :: true
+ true :: imm<1>
+
+
+ ----------------- :: false
+ false :: imm<1>
+
+
+ e1 :: mem<nat,sz>
+ e2 :: imm<nat>
+ -------------------------- :: load
+ e1 [e2, ed] : sz :: imm<sz>
+
+
+ e1 :: mem<nat,sz>
+ e2 :: imm<nat>
+ e3 :: imm<sz>
+ --------------------------------------------- :: store
+ e1 with [e2, ed]:sz <- e3 :: mem<nat,sz>
+
+
+ e1 :: imm<sz>
+ e2 :: imm<sz>
+ --------------------------------- :: bop
+ e1 bop e2 :: imm<sz>
+
+
+ e1 :: imm<sz>
+ ---------------------------------- :: uop
+ uop e1 :: imm<sz>
+
+
+ e :: imm<nat>
+ --------------------- :: cast
+ cast:sz[e] :: imm<sz>
+
+
+ var :: t
+ e1  :: t
+ e2  :: t'
+ ------------------------ :: let
+ let var = e1 in e2 :: t'
+
+
+ ------------------------- :: unknown
+ unknown[str]:t :: t
+
+
+ e1 :: imm<1>
+ e2 :: t
+ e3 :: t
+ -------------------------- :: ite
+ if e1 then e2 else e3 :: t
+
+ e :: imm<sz>
+ sz1 >= sz2
+ ---------------------------------- :: extract
+ extract:sz1:sz2[e] :: imm<sz1-sz2+1>
+
+
+ e1 :: imm<sz1>
+ e2 :: imm<sz2>
+ ---------------------------------- :: concat
+ e1 @ e2 :: imm<sz1+sz2>
