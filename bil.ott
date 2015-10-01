@@ -5,6 +5,13 @@ metavar string,str ::= {{ com quoted string literal }}
 
 grammar
 
+
+ insn :: insn_ ::=
+   | { addr = w1 ; size = w2; code = bil }      :: S    :: insn
+
+ bil,seq :: seq_ ::=
+   | { s1 ; .. ; sn }                           :: S    :: many
+
  stmt,s :: stmt_ ::=
    | var := exp                                 ::      :: move
    | jmp exp                                    ::      :: jump
@@ -14,9 +21,6 @@ grammar
    | if ( e ) seq                               :: S    :: ifthen
    | if ( e ) seq1 else seq2                    ::      :: if
 
- seq :: seq_ ::=
-   | { stmt }                                   :: S    :: one
-   | { s1 ; .. ; sn }                           :: S    :: many
 
  exp,e :: exp_ ::=
    | ( exp )                                    :: S    :: paren
@@ -170,7 +174,6 @@ defns helpers :: '' ::=
 
  -------------------------------- :: succ
  succ num:sz = num:sz1 .+ 1:sz1
-
 
 defns reduce_exp :: '' ::=
 
@@ -451,30 +454,26 @@ defns reduce_stmt :: '' ::=
 
 
  delta |- e ~> true
- delta,word |- seq ~> delta',word',{s}
- delta',word' |- s ~> delta'',word''
+ delta,word |- seq ~> delta',word',{}
  ------------------------------------- :: ifthen_true
- delta,word |- if (e) seq ~> delta'', word''
+ delta,word |- if (e) seq ~> delta', word'
 
  delta |- e ~> true
- delta,word |- seq ~> delta',word',{s}
- delta',word' |- s ~> delta'',word''
+ delta,word |- seq ~> delta',word',{}
  ------------------------------------- :: if_true
- delta,word |- if (e) seq else seq1 ~> delta'', word''
+ delta,word |- if (e) seq else seq1 ~> delta', word'
 
  delta |- e ~> false
- delta,word |- seq ~> delta',word',{s}
- delta',word' |- s ~> delta'',word''
+ delta,word |- seq ~> delta',word',{}
  ------------------------------------- :: if_false
- delta,word |- if (e) seq1 else seq ~> delta'', word''
+ delta,word |- if (e) seq1 else seq ~> delta', word'
 
 
  delta1 |- e ~> true
- delta1,word1 |- seq ~> delta2,word2,{s}
- delta2,word2 |- s ~> delta3,word3
- delta3,word3 |- while (e) seq ~> delta4,word4
+ delta1,word1 |- seq ~> delta2,word2,{}
+ delta2,word2 |- while (e) seq ~> delta3,word3
  --------------------------------------------- :: while
- delta1,word1 |- while (e) seq ~> delta4,word4
+ delta1,word1 |- while (e) seq ~> delta3,word3
 
  delta |- e ~> false
  ----------------------------------------- :: while_false
@@ -492,9 +491,40 @@ defns reduce_stmt :: '' ::=
  ------------------------------------------------------------- :: seq_last
  delta,word |- {s1; s2} ~> delta', word', {s2}
 
-
+ delta,word |- s1 ~> delta',word'
  ------------------------------------------------------------- :: seq_one
- delta,word |- {s1} ~> delta, word, {s1}
+ delta,word |- {s1} ~> delta', word', {}
+
+
+ ------------------------------------------------------------- :: seq_nil
+ delta,word |- {} ~> delta, word, {}
+
+
+defns program :: '' ::=
+
+ defn delta,w |-> insn :: :: fetch :: '' by
+
+
+ --------------------------------- :: fetch
+ delta,w |-> insn
+
+
+defns program_exec :: '' ::=
+
+  defn delta , w |- insn ~> delta' , w' :: :: exec :: '' by
+
+  delta,w1 |- bil ~> delta',w',{}
+  ------------------------------------------------------ :: step
+  delta,w |- {addr=w1; size=w2; code=bil} ~> delta',w'.+w2
+
+
+  defn delta , w ~> delta' , w' :: :: loop :: '' by
+
+  delta,w |-> insn
+  delta,w |- insn ~> delta',w'
+  delta',w' ~> delta'',w''
+  ---------------------------- :: loop
+  delta',w' ~> delta'',w''
 
 
 defns typing_exp :: '' ::=
