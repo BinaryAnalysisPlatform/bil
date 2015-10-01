@@ -6,13 +6,17 @@ metavar string,str ::= {{ com quoted string literal }}
 grammar
 
  stmt,s :: stmt_ ::=
-   | id := exp                                  ::      :: move
+   | var := exp                                 ::      :: move
    | jmp exp                                    ::      :: jump
-   | cpuexn ( int )
+   | cpuexn ( num )                             ::      :: cpuexn
    | special ( string )                         ::      :: special
-   | while ( exp ) { s1 ; .. ; sn }             ::      :: while
-   | if ( e ) { s1 ; .. ; sn }                  :: S    :: ifthen
-   | if ( e ) { s1 ; .. ; sn } else { s1 ; .. ; sm } :: :: if
+   | while ( exp ) seq                          ::      :: while
+   | if ( e ) seq                               :: S    :: ifthen
+   | if ( e ) seq1 else seq2                    ::      :: if
+
+ seq :: seq_ ::=
+   | { stmt }                                   :: S    :: one
+   | { s1 ; .. ; sn }                           :: S    :: many
 
  exp,e :: exp_ ::=
    | ( exp )                                    :: S    :: paren
@@ -27,7 +31,7 @@ grammar
    | unknown [ string ] : type                  ::      :: unk
    | if e1 then e2 else e3                      ::      :: ite
    | extract : size1 : size2 [ e ]              ::      :: ext
-   | e1 ^ e2                                    ::      :: concat
+   | e1 @ e2                                    ::      :: concat
 
  var :: var_ ::=
    | id : type                                  :: S    :: var
@@ -73,7 +77,7 @@ grammar
         {{ tex [[w1]] \stackrel{bv} < [[w2]] }}
    | w1 .<$ w2                                   :: S    :: signed_less
         {{ tex [[w1]] \stackrel{sbv} < [[w2]] }}
-   | w1 @ w2                                   :: S    :: concat
+   | w1 .@ w2                                   :: S    :: concat
         {{ tex [[w1]] \stackrel{bv} . [[w2]] }}
    | ext word ~hi : sz1 ~lo : sz2           :: S    :: extend_extract
    | ext_s word ~hi : sz1 ~lo : sz2         :: S    :: extend_extract_signed
@@ -224,11 +228,11 @@ defns reduce_exp :: '' ::=
 
  succ w = w'
  --------------------------------------------------- :: load_word_be
- delta |- v[w,be]:sz ~> v[w,be]:8 ^ v[w', be]:(sz-8)
+ delta |- v[w,be]:sz ~> v[w,be]:8 @ v[w', be]:(sz-8)
 
  succ w = w'
  --------------------------------------------------- :: load_word_el
- delta |- v[w,el]:sz ~> v[w',el]:(sz-8) ^ v[w,el]:8
+ delta |- v[w,el]:sz ~> v[w',el]:(sz-8) @ v[w,el]:8
 
 
 
@@ -375,21 +379,21 @@ defns reduce_exp :: '' ::=
 
  delta |- e2 ~> v2
  ---------------------------------------- :: concat_rhs
- delta |- e1 ^ e2 ~> e1 ^ v2
+ delta |- e1 @ e2 ~> e1 @ v2
 
 
  delta |- e1 ~> v1
  ---------------------------------------- :: concat_lhs
- delta |- e1 ^ v2 ~> v1 ^ v2
+ delta |- e1 @ v2 ~> v1 @ v2
 
  ---------------------------------------------- :: concat_lhs_un
- delta |- unknown[str]:t ^ v2 ~> unknown[str]:t
+ delta |- unknown[str]:t @ v2 ~> unknown[str]:t
 
  ---------------------------------------------- :: concat_rhs_un
- delta |- v1 ^ unknown[str]:t ~> unknown[str]:t
+ delta |- v1 @ unknown[str]:t ~> unknown[str]:t
 
  ---------------------------------------- :: concat
- delta |- w1 ^ w2 ~> w1 @ w2
+ delta |- w1 @ w2 ~> w1 .@ w2
 
  delta |- e ~> v
  ------------------------------------------------- :: extract_reduce
@@ -420,3 +424,72 @@ defns reduce_exp :: '' ::=
 
  -------------------------------------------- :: cast_unsigned
  delta |- unsigned:sz[w] ~> low:sz[w]
+
+
+defns reduce_stmt :: '' ::=
+
+ defn delta , word |- stmt ~> delta' , word' :: :: stmt :: '' by
+
+
+ delta |- e ~> v
+ ----------------------------------------- :: move
+ delta,w |- var := e ~> delta[var <- v], w
+
+ delta |- e ~> w'
+ ---------------------------------- :: jmp
+ delta,w |- jmp e ~> delta, w .+ w'
+
+
+ ------------------------------------ :: cpuexn
+ delta,w |- cpuexn(num) ~> delta,w
+
+
+ ------------------------------------ :: special
+ delta,w |- special(str) ~> delta,w
+
+
+ delta |- e ~> true
+ delta,word |- seq ~> delta',word',{s}
+ delta',word' |- s ~> delta'',word''
+ ------------------------------------- :: ifthen_true
+ delta,word |- if (e) seq ~> delta'', word''
+
+ delta |- e ~> true
+ delta,word |- seq ~> delta',word',{s}
+ delta',word' |- s ~> delta'',word''
+ ------------------------------------- :: if_true
+ delta,word |- if (e) seq else seq1 ~> delta'', word''
+
+ delta |- e ~> false
+ delta,word |- seq ~> delta',word',{s}
+ delta',word' |- s ~> delta'',word''
+ ------------------------------------- :: if_false
+ delta,word |- if (e) seq1 else seq ~> delta'', word''
+
+
+ delta1 |- e ~> true
+ delta1,word1 |- seq ~> delta2,word2,{s}
+ delta2,word2 |- s ~> delta3,word3
+ delta3,word3 |- while (e) seq ~> delta4,word4
+ --------------------------------------------- :: while
+ delta1,word1 |- while (e) seq ~> delta4,word4
+
+ delta |- e ~> false
+ ----------------------------------------- :: while_false
+ delta,word |- while (e) seq ~> delta,word
+
+
+
+ defn delta , word |- seq ~> delta' , word' , seq' :: :: seq :: '' by
+
+ delta,word |- s1 ~> delta',word'
+ ------------------------------------------------------------- :: seq_rec
+ delta,word |- {s1; s2; ..; sn} ~> delta', word', {s2; ..; sn}
+
+ delta,word |- s1 ~> delta',word'
+ ------------------------------------------------------------- :: seq_last
+ delta,word |- {s1; s2} ~> delta', word', {s2}
+
+
+ ------------------------------------------------------------- :: seq_one
+ delta,word |- {s1} ~> delta, word, {s1}
