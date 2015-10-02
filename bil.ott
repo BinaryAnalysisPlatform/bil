@@ -17,8 +17,8 @@ grammar
  stmt,s :: stmt_ ::=
    | var := exp                                 ::      :: move
    {{ com -- assign [[exp]] to [[var]]  }}
-   | jmp exp                                    ::      :: jump
-   {{ com -- transfer control to given [[exp]] }}
+   | jmp e                                      ::      :: jump
+   {{ com -- transfer control to a given address [[e]] }}
    | cpuexn ( num )                             ::      :: cpuexn
    {{ com -- interrupt CPU with a given interrupt [[num]] }}
    | special ( string )                         ::      :: special
@@ -71,9 +71,9 @@ grammar
    | num : nat                                 :: S    :: word
    | 1 : nat                                   :: S    :: one
    | true                                       :: S    :: true
-   {{ com -- sugar for $1:1$ }}
+   {{ com -- sugar for 1:1 }}
    | false                                      :: S    :: false
-   {{ com -- sugar for $0:1$ }}
+   {{ com -- sugar for 0:1 }}
    | w1 .+ w2                                   :: S    :: plus
         {{ tex [[w1]] \stackrel{bv} + [[w2]] }}
         {{ com -- plus }}
@@ -364,9 +364,10 @@ defns program :: '' ::=
  defn delta , w , var ~> delta' , w' , var' :: :: step :: '' by
 
  delta,w,var |-> {addr=w1; size=w2; code=bil}
- delta,w1 |- bil ~> delta',w',{}
+ delta, w1.+w2 |- bil ~> delta',w3,{}
  ---------------------------------------------------------- :: step
- delta,w,var  ~> delta',w'.+w2,var
+ delta,w,var  ~> delta',w3,var
+
 
  defn delta,w,var |-> insn :: :: decode :: '' by
 
@@ -396,7 +397,6 @@ defns reduce_exp :: '' ::=
  delta[var' <- v'] |- var ~> v
 
 
- {{com if variable is not found, then it evaluates to unknown value}}
 
  -------------------------------------------- :: var_unknown
   [] |- id:type ~> unknown [str] : type
@@ -405,12 +405,6 @@ defns reduce_exp :: '' ::=
 % LOAD                                              %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
- {{ com Load expression is evaluated semi-lazily, first we evaluate an
- address, then memory expression. Once memory expression is reduced to
- a value, we start to reduce a symbolic memory object, until we end up
- with a non-reducible value. The memory object is a sequence of nested
- store expressions. Whenever we hit a storage to an unknown address we
- stop reduction and reduce the whole load expression to an unknown val}}
 
  delta |- e2 ~> v2
  ------------------------------------- :: load_addr
@@ -423,7 +417,7 @@ defns reduce_exp :: '' ::=
 
 
  ----------------------------------------------------------- :: load_byte
- delta |- (v1 with [w,ed]:8 <- num:8)[w,ed]:8 ~> num:8
+ delta |- (v1 with [w,ed]:8 <- num:8)[w,ed']:8 ~> num:8
 
  ------------------------------------------------------------------------------ :: load_un_addr
  delta |- (v1 with [unknown[str]:t,ed]:8 <- v2)[v3,ed]:8 ~> unknown[str]:imm<8>
@@ -443,7 +437,7 @@ defns reduce_exp :: '' ::=
 
  succ w = w'
  --------------------------------------------------- :: load_word_el
- delta |- v[w,el]:sz ~> v[w',el]:(sz-8) @ v[w,el]:8
+ delta |- v[w,el]:sz ~> v[w',el]:(sz-8) @ v[w,be]:8
 
 
 
@@ -467,6 +461,22 @@ defns reduce_exp :: '' ::=
  delta |- e ~> v
  ------------------------------------------------------------------------- :: store_mem
  delta |- e with [v1,ed]:sz <- val ~> v with [v1,ed] : sz <- val
+
+ succ w = w'
+ delta |- high:8[w] ~> w1
+ delta |- low:(sz-8)[w] ~> w2
+ delta |- v with [w,be]:8 <- w1 ~> v'
+ -------------------------------------------------------------------- :: store_word_be
+ delta |- v with [w,be]:sz <- val ~> v' with [w', be]:(sz-8) <- w2
+
+ succ w = w'
+ delta |- low:8[w] ~> w1
+ delta |- high:(sz-8)[w] ~> w2
+ delta |- v with [w,be]:8 <- w1 ~> v'
+ -------------------------------------------------------------------- :: store_word_el
+ delta |- v with [w,el]:sz <- val ~> v' with [w', el]:(sz-8) <- w2
+
+
 
 
  delta |- e1 ~> v
@@ -648,7 +658,7 @@ defns reduce_stmt :: '' ::=
 
  delta |- e ~> w'
  ---------------------------------- :: jmp
- delta,w |- jmp e ~> delta, w .+ w'
+ delta,w |- jmp e ~> delta, w'
 
 
  ------------------------------------ :: cpuexn

@@ -22,9 +22,7 @@
 This document describes the syntax and semantics of BAP Instruction
 Language.  The language is used to represent a semantics of machine
 instructions. Each machine instruction is represented by a BIL program
-that tries to capture all side effect of the instruction.
-
-
+that captures side effect of the instruction.
 
 \section{Syntax}
 \label{sec:syntax}
@@ -32,14 +30,14 @@ that tries to capture all side effect of the instruction.
 \subsection{Metavariables}
 \label{sec:meta}
 
-We define a small set of metavariables that are used to denote string
-and numeric literals and subscripts:
+We define a small set of metavariables that are used to denote
+subscripts, numerals and string literals:
 
 \ottmetavars
 
 \subsection{BIL syntax}
 
-BIL program is reperesented as a sequence of BIL statements. Each
+BIL program is reperesented as a sequence of statements. Each
 statement performs some side-effectful computation.
 
 \ottgrammartabular{
@@ -57,11 +55,6 @@ parlance).
 
 \ottgrammartabular{
 \ottexp\ottinterrule
-\ottvar\ottinterrule
-\ottbop\ottinterrule
-\ottuop\ottinterrule
-\ottendian\ottinterrule
-\ottcast\ottinterrule
 }
 
 \ottgrammartabular{
@@ -92,10 +85,10 @@ unsigned (if it does matter). Bitvector is represented by a pair of
 value and size. Operations \verb|ext| and \verb|exts| performs
 extract/extend operation. The former is unsigned (i.e., it extends
 with zeros), the latter is signed. This operation extracts bits from a
-bitvector starting from $\mathit{hi}$ and ending $\mathit{lo}$ bit
-(both ends including). If $\mathit{hi}$ is greater than the bitwidth
-of the bitvector, then it is extended with zeros (for \verb|ext|
-operation) or with a sign bit (for \verb|exts|) operation.
+bitvector starting from $\mathit{hi}$ and ending with $\mathit{lo}$
+bit (both ends included). If $\mathit{hi}$ is greater than the
+bitwidth of the bitvector, then it is extended with zeros (for
+\verb|ext| operation) or with a sign bit (for \verb|exts|) operation.
 
 \ottgrammartabular{
 \ottword\ottinterrule
@@ -108,8 +101,8 @@ Values are syntactic subset of expressions. They are used to represent
 expressions that are not reducible.
 
 We have three kinds of values --- immediates, represented as
-bitvectors; unknown values and storages (aka memories) represented
-symbolically as a list of assignments:
+bitvectors; unknown values and storages (memories in BIL parlance),
+represented symbolically as a list of assignments:
 
 \ottgrammartabular{
 \ottval\ottinterrule
@@ -126,7 +119,7 @@ We use $\Delta$ to denote set of bindings of variables to values. The
 $\Delta$ context is represented as list of pairs. We also add a small
 set of operations over natural numbers, like comparison and
 arithmetics. Natural numbers are mostly used to reason about sizes of
-bitvectors, that why they are often referred as $\mathit{sz}$.
+bitvectors, that's why they are often referred as $\mathit{sz}$.
 
 We also add syntax for equality comparison for values and variables.
 
@@ -147,14 +140,15 @@ We also add syntax for equality comparison for values and variables.
 \label{sec:insn}
 
 To reason about the whole program we introduce a syntax for
-instruction. An instruction is a binary string with length
-$\mathit{w_2}$, that was read by a decoder from an address
-$\mathit{w_1}$. The semantics of an instruction is described by a
-$\mathit{bil}$ program.
+instruction. An instruction is a binary sequence of $\mathit{w_2}$
+bytes, that was read by a decoder from an address $\mathit{w_1}$. The
+semantics of an instruction is described by the $\mathit{bil}$ program.
 
 \ottgrammartabular{
 \ottinsn\ottinterrule
 }
+
+\clearpage
 
 \section{Typing}
 \label{sec:typing}
@@ -167,6 +161,8 @@ the rules are fairly straightforward.
 
 \ottdefnstypingXXexp
 
+\clearpage
+
 
 \section{Operational semantics}
 
@@ -174,17 +170,80 @@ the rules are fairly straightforward.
 
 Program is coinductively defined as an infinite stream of program
 states, produced by a step rule. Each state is represented with a
-triplet $\Delta, w, var$, where $\Delta$ is a mapping from variables
+triplet $(\Delta, w, var)$, where $\Delta$ is a mapping from variables
 to values, $w$ is a program counter, and $var$ is a variable
 denoting currently active memory.
 
 The \verb|step| rule defines how a machine instruction is
-evaluated. We use ``magic'' function \verb|decode| that fetches
-instruction from memory and decodes it to a BIL program.
+evaluated. We use ``magic'' rule \verb|decode| that fetches
+instructions from the memory and decodes them to a BIL program.
 
-A program counter is updated after each instruction.
+The BIL code is evaluated using reduction rules of statements (see
+section \ref{sec:sema:stmt}). Then the program counter is updated with
+the $w_3$, that initially points to a byte following current instruction.
 
 \ottdefnsprogram
+
+\section{Semantics of statements}
+\label{sec:sema:stmt}
+
+The reduction rule defines transformation of a state for each
+statement. The state of the reduction rule consists of a pair
+$(\Delta,w)$, where $\Delta$ is a mapping from variables to values and
+$w$ is an address of a next instruction.
+
+Two statements affect the state: \verb|Move| statement introduces new
+$var \leftarrow v$ binding in $\Delta$, and \verb|Jmp| affects
+program counter.
+
+The \verb|if| and \verb|while| instructions introduce local control
+flow.
+
+There is no special semantics associated with \verb|special| and
+\verb|cpuexn| statements.
+
+\ottdefnsreduceXXstmt
+
+
+\section {Semantics of expressions}
+\label{sec:sema:exp}
+
+This section describes a small step operational semantics for
+expressions. A symbolic formula $\Delta \vdash e \rightarrow e' $
+defines a step of transformation from expression $e$ to an expression
+$e'$ under given context $\Delta$.
+
+A well formed (well typed) expression evaluates to a value expression,
+that is syntactic subset of expression grammar (see
+section \ref{sec:values}).
+
+A value can be either an immediate, represented by a bitvector, a
+unknown value, or a memory storage.
+
+A memory storage is represented symbolically as a sequence of
+storages to the originally undefined memory. Each storage
+operation of size greater than 8 bits is desugared into a sequence of
+8 bit storages in a big endian order.
+
+A load operation will first reduce all sub expressions of a memory
+object to values and then recursively destruct the object until one of
+the following conditions is met:
+
+
+\begin{description}
+\item[load-byte:] if the memory object is a storage of a \verb|value|
+  to an immediate (known) address that we're trying to load then the
+  load expression is reduced to \verb|value|.
+\item[load-un-memory:] if the memory object is an \verb|unknown| value,
+  then the load expression evaluates to \verb|unknown|.
+\item[load-un-addr:] if the memory object is a storage to
+  \verb|unknown| value address then load expression evaluates to
+  \verb|unknown|.
+\end{description}
+
+\ottdefnsreduceXXexp
+
+\ottdefnshelpers
 
 
 \end{document}
