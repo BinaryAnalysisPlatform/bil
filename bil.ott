@@ -16,19 +16,19 @@ grammar
 
  stmt,s :: stmt_ ::=
    | var := exp                                 ::      :: move
-   {{ com -- assign [[exp]] to [[var]]  }}
+   {{ com -- assign $exp$ to $var$  }}
    | jmp e                                      ::      :: jump
-   {{ com -- transfer control to a given address [[e]] }}
+   {{ com -- transfer control to a given address $e$ }}
    | cpuexn ( num )                             ::      :: cpuexn
-   {{ com -- interrupt CPU with a given interrupt [[num]] }}
+   {{ com -- interrupt CPU with a given interrupt $num$ }}
    | special ( string )                         ::      :: special
    {{ com -- instruction with unknown semantics  }}
    | while ( exp ) seq                          ::      :: while
-   {{ com -- eval [[seq]] while [[exp]] is true }}
+   {{ com -- eval $seq$ while $exp$ is true }}
    | if ( e ) seq                               :: S    :: ifthen
-   {{ com -- eval [[seq]] if [[e]] is true }}
+   {{ com -- eval $seq$ if $e$ is true }}
    | if ( e ) seq1 else seq2                    ::      :: if
-   {{ com -- if [[e]] is true then eval [[seq1]] else [[seq2]] }}
+   {{ com -- if $e$ is true then eval $seq_1$ else $seq_2$ }}
 
 
  exp,e :: exp_ ::=
@@ -38,25 +38,25 @@ grammar
    | word                                       ::      :: int
    {{ com -- an immediate value }}
    | e1 [ e2 , endian ] : nat                   ::      :: load
-   {{ com -- load a value from address [[e2]] at storage [[e1]]}}
+   {{ com -- load a value from address $e_2$ at storage $e_1$}}
    | e1 with [ e2 , endian ] : nat <- e3        ::      :: store
-   {{ com -- update a storage [[e1]] with binding [[e2]] $\leftarrow$ [[e3]] }}
+   {{ com -- update a storage $e_1$ with binding $e_2$ $\leftarrow$ $e_3$ }}
    | e1 bop e2                                  ::      :: binop
-   {{ com -- perform binary operation on [[e1]] and [[e2]]}}
+   {{ com -- perform binary operation on $e_1$ and $e_2$}}
    | uop e1                                     ::      :: unop
-   {{ com -- perform an unary operation on [[e1]]}}
+   {{ com -- perform an unary operation on $e_1$}}
    | cast : nat [ e ]                           ::      :: cast
-   {{ com -- extract or extend bitvector [[e]] }}
+   {{ com -- extract or extend bitvector $e$ }}
    | let var = e1 in e2                         ::      :: let
-   {{ com -- bind [[e1]] to [[var]] in expression [[e2]]}}
+   {{ com -- bind $e_1$ to $var$ in expression $e_2$}}
    | unknown [ string ] : type                  ::      :: unk
-   {{ com -- unknown or undefined value of a given [[type]] }}
+   {{ com -- unknown or undefined value of a given $type$ }}
    | if e1 then e2 else e3                      ::      :: ite
-   {{ com -- evaluates to [[e2]] if [[e1]] is true else to [[e3]] }}
+   {{ com -- evaluates to $e_2$ if $e_1$ is true else to $e_3$ }}
    | extract : nat1 : nat2 [ e ]                ::      :: ext
-   {{ com -- extract or extend bitvector [[e]]}}
+   {{ com -- extract or extend bitvector $e$}}
    | e1 @ e2                                    ::      :: concat
-   {{ com -- concatenate two bitvector [[e1]] to [[e2]] }}
+   {{ com -- concatenate two bitvector $e_1$ to $e_2$ }}
 
  var :: var_ ::=
    | id : type                                  :: S    :: var
@@ -183,9 +183,9 @@ grammar
 
  type,t :: type_ ::=
    | imm < sz >                                 ::      :: imm
-   {{ com -- immediate of size [[sz]]}}
+   {{ com -- immediate of size $sz$}}
    | mem < sz1 , sz2 >                          ::      :: mem
-   {{ com -- memory with address size [[sz1]] and element size [[sz2]]}}
+   {{ com -- memory with address size $sz_1$ and element size $sz_2$}}
 
  delta {{ tex \Delta}} :: delta_ ::=
    | []                                         ::      :: nil  {{ com -- empty }}
