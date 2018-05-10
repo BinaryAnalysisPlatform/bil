@@ -51,7 +51,8 @@ statement performs some side-effectful computation.
 BIL expressions are side-effect free. Expressions include a usual set
 of operations on bitvectors, like arithmetic operations and converting
 bitvectors of one size to bitvectors of another size (casting in BIL
-parlance).
+parlance).  We write $[e_1/var]e_2$ for the capture-avoiding
+substitution of $e_1$ for free occurances of $var$ in $e_2$
 
 \ottgrammartabular{
 \ottexp\ottinterrule
@@ -116,10 +117,16 @@ The following syntax is used to specify symbolic formulas in premises
 of judgments.
 
 We use $\Delta$ to denote set of bindings of variables to values. The
-$\Delta$ context is represented as list of pairs. We also add a small
-set of operations over natural numbers, like comparison and
-arithmetics. Natural numbers are mostly used to reason about sizes of
-bitvectors, that's why they are often referred as $\mathit{sz}$.
+$\Delta$ context is represented as list of pairs. We write
+$(var,v) \in \Delta$ to indicate that the value $v$ is the right-most
+binding of $var$ in $\Delta$.  Additionally, we write
+$\mathsf{dom}(\Delta)$ for $\Delta$'s {\em domain} (the set of
+variables for which it contains values).
+
+We also add a small set of operations over natural numbers, like
+comparison and arithmetics. Natural numbers are mostly used to reason
+about sizes of bitvectors, that's why they are often referred as
+$\mathit{sz}$.
 
 We also add syntax for equality comparison for values and variables.
 
@@ -245,5 +252,6 @@ the following conditions is met:
 
 \ottdefnshelpers
 
+\ottdefnsmultistepXXexp
 
 \end{document}
