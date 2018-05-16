@@ -248,6 +248,16 @@ the following conditions is met:
   \verb|unknown|.
 \end{description}
 
+This section also defines $\Delta \vdash e_1 \leadsto^{*} e_2$.  This relation
+is the reflexive, transitive closure of $\leadsto$ and use useful to describe
+reductions that may take many steps.  For example, in the evaluation rules for
+statements, it is often necessary to evaluate an expression completely to a
+value.  The $\leadsto^{*}$ relation is used to allow reductions that take an
+indeterminate number of individual $\leadsto$ steps.  Such a derivation can be
+built with repeated use of the $\ottdrulename{reduce}$ rule.
+
+\medskip
+
 \ottdefnsreduceXXexp
 
 \ottdefnshelpers
