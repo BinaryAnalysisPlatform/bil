@@ -57,6 +57,8 @@ grammar
    {{ com -- extract or extend bitvector $e$}}
    | e1 @ e2                                    ::      :: concat
    {{ com -- concatenate two bitvector $e_1$ to $e_2$ }}
+   | [ e1 / var ] e2                              :: M :: subst
+   {{ com -- the (capture avoiding) substitution of $e_1$ for $var$ in $e_2$ }}
 
  var :: var_ ::=
    | id : type                                  :: S    :: var
@@ -201,6 +203,11 @@ formula :: formula_ ::=
  | nat1 > nat2              :: M :: nat_gt {{ coq ([[nat1]] > [[nat2]])}}
  | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
+ | e1 :=def e2              :: M :: defines
+     {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
+ | ( var , val ) in delta   :: M :: in_env
+ | var notin dom ( delta )   :: M :: notin_env
+   {{ tex [[var]] [[notin]] \mathsf{dom}([[delta]]) }}
 
 terminals :: terminals_ ::=
   | ->				::   ::	rarrow					{{ tex \rightarrow }}
@@ -210,10 +217,13 @@ terminals :: terminals_ ::=
   | |->				::   :: mapsto					{{ tex \mapsto }}
   | lambda			::   :: lambda					{{ tex \lambda }}
   | ~>				::   :: leadsto					{{ tex \leadsto }}
+  | ~>*				::   :: mleadsto					{{ tex \leadsto^{*} }}
   | <>              ::   :: neq                     {{ tex \neq }}
   | >>              ::   :: lsr                     {{ tex \gg}}
   | ~>>             ::   :: asr                     {{ tex \ggg}}
   | <<              ::   :: lsl                     {{ tex \ll}}
+  | in        :: :: in {{ tex \in }}
+  | notin     :: :: notin {{ tex \notin }}
 
 
 subrules
@@ -386,43 +396,34 @@ defns reduce_exp :: '' ::=
 
  defn delta |- exp ~> exp' :: :: exp :: '' by
 
-
- -------------------------------------------- :: var_reduce
- delta[var <- v] |- var ~> v
-
-
+ (var,v) in delta
+------------------ :: var_in
  delta |- var ~> v
- var <> var'
- -------------------------------------------- :: var_extend
- delta[var' <- v'] |- var ~> v
 
 
-
+ id:type notin dom(delta)
  -------------------------------------------- :: var_unknown
-  [] |- id:type ~> unknown [str] : type
+ delta |- id:type ~> unknown[str]:type
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % LOAD                                              %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
- delta |- e2 ~> v2
- ------------------------------------- :: load_addr
- delta |- e1[e2,ed]:sz ~> e1[v2,ed]:sz
-
-
- delta |- e1 ~> v1
- ------------------------------------- :: load_mem
- delta |- e1[v2,ed]:sz ~> v1[v2,ed]:sz
+ delta |- e2 ~> e2'
+ ------------------------------------- :: load_step_addr
+ delta |- e1[e2,ed]:sz ~> e1[e2',ed]:sz
 
 
- ----------------------------------------------------------- :: load_byte
+ delta |- e1 ~> e1'
+ ------------------------------------- :: load_step_mem
+ delta |- e1[v2,ed]:sz ~> e1'[v2,ed]:sz
+
+
+ ------------------------------------------------------ :: load_byte
  delta |- (v1 with [w,ed]:8 <- num:8)[w,ed']:8 ~> num:8
 
  ------------------------------------------------------------------------------ :: load_un_addr
  delta |- (v1 with [unknown[str]:t,ed]:8 <- v2)[v3,ed]:8 ~> unknown[str]:imm<8>
-
-
 
  w1 <> w2
  ---------------------------------------------------------- :: load_rec
@@ -446,94 +447,90 @@ defns reduce_exp :: '' ::=
 %% STORE                                             %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+ 
+
+ delta |- e3 ~> e3'
+ ------------------------------------------------------------------------- :: store_step_val
+ delta |- e1 with [e2,ed]:sz <- e3 ~> e1 with [e2,ed] : sz <- e3'
 
 
- delta |- e ~> v
- ------------------------------------------------------------------------- :: store_val
- delta |- e1 with [e2,ed]:sz <- e ~> e1 with [e2,ed] : sz <- v
+ delta |- e2 ~> e2'
+ ------------------------------------------------------------------------- :: store_step_addr
+ delta |- e1 with [e2,ed]:sz <- v3 ~> e1 with [e2',ed] : sz <- v3
 
 
- delta |- e ~> v
- ------------------------------------------------------------------------- :: store_addr
- delta |- e1 with [e,ed]:sz <- val ~> e1 with [v,ed] : sz <- val
-
-
- delta |- e ~> v
- ------------------------------------------------------------------------- :: store_mem
- delta |- e with [v1,ed]:sz <- val ~> v with [v1,ed] : sz <- val
+ delta |- e1 ~> e1'
+ ------------------------------------------------------------------------- :: store_step_mem
+ delta |- e1 with [v2,ed]:sz <- v3 ~> e1' with [v2,ed] : sz <- v3
 
  succ w = w'
- delta |- high:8[w] ~> w1
- delta |- low:(sz-8)[w] ~> w2
- delta |- v with [w,be]:8 <- w1 ~> v'
+ e1 :=def (v with [w,be]:8 <- high:8[val])
  -------------------------------------------------------------------- :: store_word_be
- delta |- v with [w,be]:sz <- val ~> v' with [w', be]:(sz-8) <- w2
+ delta |- v with [w,be]:sz <- val ~> e1 with [w',be]:(sz-8) <- low:(sz-8)[val]
 
  succ w = w'
- delta |- low:8[w] ~> w1
- delta |- high:(sz-8)[w] ~> w2
- delta |- v with [w,be]:8 <- w1 ~> v'
+ e1 :=def (v with [w,el]:8 <- low:8[val])
  -------------------------------------------------------------------- :: store_word_el
- delta |- v with [w,el]:sz <- val ~> v' with [w', el]:(sz-8) <- w2
+ delta |- v with [w,el]:sz <- val ~> e1 with [w',el]:(sz-8) <- high:(sz-8)[val]
 
 
+ delta |- e1 ~> e1'
+ ------------------------------------------------ :: let_step
+ delta |- let var = e1 in e2 ~> let var = e1' in e2
 
 
- delta |- e1 ~> v
- ------------------------------------------------ :: let_head
- delta |- let var = e1 in e2 ~> let var = v in e2
+ ------------------------------------------------- :: let
+ delta |- let var = v in e ~> [v/var]e
 
 
- delta[var <- v] |- e ~> val
- -------------------------------- :: let_body
- delta |- let var = v in e ~> val
+ delta |- e1 ~> e1'
+ ------------------------------------------------------------------ :: ite_step
+ delta |- if e1 then e2 else e3 ~> if e1' then e2 else e3
+
+ ----------------------------------------------- :: ite_true
+ delta |- if true then e2 else e3 ~> e2
+
+ 
+ ------------------------------------------------ :: ite_false
+ delta |- if false then e2 else e3 ~> e3
 
 
- delta |- e1 ~> true
- ------------------------------------ :: ite_true
- delta |- if e1 then e2 else e3 ~> e2
+ delta |- e2 ~> e2'
+ ------------------------------------------ :: bop_rhs
+ delta |- e1 bop e2 ~> e1 bop e2'
 
- delta |- e1 ~> false
- ------------------------------------ :: ite_false
- delta |- if e1 then e2 else e3 ~> e3
-
-
- delta |- e2 ~> v
- ------------------------------------- :: bop_rhs
- delta |- e1 bop e2 ~> e1 bop v
-
- delta |- e1 ~> v
- ------------------------------------- :: bop_lhs
- delta |- e1 bop v' ~> v bop v'
+ delta |- e1 ~> e1'
+ ----------------------------------------- :: bop_lhs
+ delta |- e1 bop v2 ~> e1' bop v2
 
 
- ----------------------------------------------- :: bop_unk_rhs
+ -------------------------------------------------------- :: bop_unk_rhs
  delta |- e bop unknown[str]:t ~> unknown[str]:t
 
- ----------------------------------------------- :: bop_unk_lhs
+ -------------------------------------------------------- :: bop_unk_lhs
  delta |- unknown[str]:t bop e ~> unknown[str]:t
 
 
- ---------------------------------------- :: plus
+ -------------------------------------- :: plus
  delta |- w1 + w2 ~> w1 .+ w2
 
- ---------------------------------------- :: minus
+ -------------------------------------- :: minus
  delta |- w1 - w2 ~> w1 .- w2
 
 
- ---------------------------------------- :: times
+ ------------------------------------- :: times
  delta |- w1 * w2 ~> w1 .* w2
 
 
- ---------------------------------------- :: div
+ ------------------------------------- :: div
  delta |- w1 / w2 ~> w1 ./ w2
 
 
- ----------------------------------------------- :: sdiv
+ --------------------------------------- :: sdiv
  delta |- w1 /$ w2 ~> w1 ./$ w2
 
 
- ---------------------------------------- :: mod
+ ------------------------------------- :: mod
  delta |- w1 % w2 ~> w1 .% w2
 
 
@@ -573,22 +570,22 @@ defns reduce_exp :: '' ::=
  delta |- w1 < w2 ~> w1 .< w2
 
 
- delta |- w1 <> w2 ~> w
+
  ----------------------------------------------- :: less_eq
- delta |- w1 <= w2 ~> w & (w1 < w2)
+ delta |- w1 <= w2 ~> (w1 < w2) | (w1 = w2)
 
 
 
  ----------------------------------------------- :: signed_less
  delta |- w1 <$ w2 ~> w1 .<$ w2
 
- delta |- w1 <> w2 ~> w
- ----------------------------------------------- :: signed_less_eq
- delta |- w1 <=$ w2 ~> w & (w1 <$ w2)
 
- delta |- e ~> v
+ ----------------------------------------------------- :: signed_less_eq
+ delta |- w1 <=$ w2 ~> (w1 = w2) & (w1 <$ w2)
+
+ delta |- e ~> e'
  ---------------------------------------- :: uop
- delta |- uop e ~> uop v
+ delta |- uop e ~> uop e'
 
  ---------------------------------------- :: not_true
  delta |- ~true ~> false
@@ -598,14 +595,14 @@ defns reduce_exp :: '' ::=
  delta |- ~false ~> true
 
 
- delta |- e2 ~> v2
+ delta |- e2 ~> e2'
  ---------------------------------------- :: concat_rhs
- delta |- e1 @ e2 ~> e1 @ v2
+ delta |- e1 @ e2 ~> e1 @ e2'
 
 
- delta |- e1 ~> v1
+ delta |- e1 ~> e1'
  ---------------------------------------- :: concat_lhs
- delta |- e1 @ v2 ~> v1 @ v2
+ delta |- e1 @ v2 ~> e1' @ v2
 
  ---------------------------------------------- :: concat_lhs_un
  delta |- unknown[str]:t @ v2 ~> unknown[str]:t
@@ -616,9 +613,9 @@ defns reduce_exp :: '' ::=
  ---------------------------------------- :: concat
  delta |- w1 @ w2 ~> w1 .@ w2
 
- delta |- e ~> v
+ delta |- e ~> e'
  ------------------------------------------------- :: extract_reduce
- delta |- extract:sz1:sz2[e] ~> extract:sz1:sz2[v]
+ delta |- extract:sz1:sz2[e] ~> extract:sz1:sz2[e']
 
 
  ---------------------------------------------------------- :: extract_un
@@ -627,9 +624,9 @@ defns reduce_exp :: '' ::=
  ------------------------------------------------------ :: extract
  delta |- extract:sz1:sz2[w] ~> ext w ~hi:sz1 ~lo:sz2
 
- delta |- e ~> v
+ delta |- e ~> e'
  --------------------------------- :: cast_reduce
- delta |- cast:sz[e] ~> cast:sz[v]
+ delta |- cast:sz[e] ~> cast:sz[e']
 
 
  -------------------------------------------- :: cast_low
@@ -652,11 +649,12 @@ defns reduce_stmt :: '' ::=
  defn delta , word |- stmt ~> delta' , word' :: :: stmt :: '' by
 
 
- delta |- e ~> v
+ delta |- e ~>* v
  ----------------------------------------- :: move
  delta,w |- var := e ~> delta[var <- v], w
 
- delta |- e ~> w'
+
+ delta |- e ~>* w'
  ---------------------------------- :: jmp
  delta,w |- jmp e ~> delta, w'
 
@@ -669,29 +667,29 @@ defns reduce_stmt :: '' ::=
  delta,w |- special(str) ~> delta,w
 
 
- delta |- e ~> true
+ delta |- e ~>* true
  delta,word |- seq ~> delta',word',{}
  ------------------------------------- :: ifthen_true
  delta,word |- if (e) seq ~> delta', word'
 
- delta |- e ~> true
+ delta |- e ~>* true
  delta,word |- seq ~> delta',word',{}
  ------------------------------------- :: if_true
  delta,word |- if (e) seq else seq1 ~> delta', word'
 
- delta |- e ~> false
+ delta |- e ~>* false
  delta,word |- seq ~> delta',word',{}
  ------------------------------------- :: if_false
  delta,word |- if (e) seq1 else seq ~> delta', word'
 
 
- delta1 |- e ~> true
+ delta1 |- e ~>* true
  delta1,word1 |- seq ~> delta2,word2,{}
  delta2,word2 |- while (e) seq ~> delta3,word3
  --------------------------------------------- :: while
  delta1,word1 |- while (e) seq ~> delta3,word3
 
- delta |- e ~> false
+ delta |- e ~>* false
  ----------------------------------------- :: while_false
  delta,word |- while (e) seq ~> delta,word
 
@@ -714,3 +712,15 @@ defns reduce_stmt :: '' ::=
 
  ------------------------------------------------------------- :: seq_nil
  delta,word |- {} ~> delta, word, {}
+ 
+defns multistep_exp :: '' ::=
+
+ defn delta |- exp ~>* exp' :: :: mexp :: '' by
+
+ ---------------- :: refl
+ delta |- e ~>*  e
+
+ delta |- e1 ~> e2
+ delta |- e2 ~>* e3
+ ------------------ :: reduce
+ delta |- e1 ~>* e3
