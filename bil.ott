@@ -306,11 +306,6 @@ defns typing_stmt :: '' ::=
  {stmt}  is ok
 
  s1 is ok
- s2 is ok
- ----------------------------- :: seq_two
- {s1;s2} is ok
-
- s1 is ok
  {s2; ..; sn} is ok
  ------------------------------ :: seq_rec
  {s1; s2; ..; sn} is ok
