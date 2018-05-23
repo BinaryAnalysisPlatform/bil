@@ -80,16 +80,19 @@ with address bitwidth and values bitwidth.
 \subsection{Bitvector syntax}
 \label{sec:bitvector}
 
-We represent concrete bitvector operations with the following syntax.
+We define a type of {\em words}, which are concrete bitvectors
+represented by a pair of value and size.  Many operations on words are
+required by the semantics and are listed below.
+
 Operations marked with \verb|sbv| are signed. All other operations are
-unsigned (if it does matter). Bitvector is represented by a pair of
-value and size. Operations \verb|ext| and \verb|exts| performs
-extract/extend operation. The former is unsigned (i.e., it extends
-with zeros), the latter is signed. This operation extracts bits from a
-bitvector starting from $\mathit{hi}$ and ending with $\mathit{lo}$
-bit (both ends included). If $\mathit{hi}$ is greater than the
-bitwidth of the bitvector, then it is extended with zeros (for
-\verb|ext| operation) or with a sign bit (for \verb|exts|) operation.
+unsigned (if it does matter).  Operations \verb|ext| and \verb|exts|
+performs extract/extend operation. The former is unsigned (i.e., it
+extends with zeros), the latter is signed. This operation extracts
+bits from a bitvector starting from $\mathit{hi}$ and ending with
+$\mathit{lo}$ bit (both ends included). If $\mathit{hi}$ is greater
+than the bitwidth of the bitvector, then it is extended with zeros
+(for \verb|ext| operation) or with a sign bit (for \verb|exts|)
+operation.
 
 \ottgrammartabular{
 \ottword\ottinterrule
