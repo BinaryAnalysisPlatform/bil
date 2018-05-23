@@ -205,7 +205,7 @@ formula :: formula_ ::=
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
- | ( var , val ) in delta   :: M :: in_env
+ | ( var , val ) isin delta   :: M :: in_env
  | var notin dom ( delta )   :: M :: notin_env
    {{ tex [[var]] [[notin]] \mathsf{dom}([[delta]]) }}
 
@@ -222,7 +222,7 @@ terminals :: terminals_ ::=
   | >>              ::   :: lsr                     {{ tex \gg}}
   | ~>>             ::   :: asr                     {{ tex \ggg}}
   | <<              ::   :: lsl                     {{ tex \ll}}
-  | in        :: :: in {{ tex \in }}
+  | isin        :: :: in {{ tex \in }}
   | notin     :: :: notin {{ tex \notin }}
 
 
@@ -387,7 +387,7 @@ defns reduce_exp :: '' ::=
 
  defn delta |- exp ~> exp' :: :: exp :: '' by
 
- (var,v) in delta
+ (var,v) isin delta
 ------------------ :: var_in
  delta |- var ~> v
 
