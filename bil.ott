@@ -69,8 +69,8 @@ grammar
    | unknown [ string ] : type                 :: M    :: bot
 
  word,w :: word_ ::=
+   | num : nat                                 ::     :: word
    | (w)                                        :: S    :: paren
-   | num : nat                                 :: S    :: word
    | 1 : nat                                   :: S    :: one
    | true                                       :: S    :: true
    {{ com -- sugar for 1:1 }}
