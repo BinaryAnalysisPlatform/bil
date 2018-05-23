@@ -239,15 +239,6 @@ defns typing_exp :: '' ::=
  ----------------- :: int
  num:sz :: imm<sz>
 
-
- ----------------- :: true
- true :: imm<1>
-
-
- ----------------- :: false
- false :: imm<1>
-
-
  e1 :: mem<nat,sz>
  e2 :: imm<nat>
  -------------------------- :: load
