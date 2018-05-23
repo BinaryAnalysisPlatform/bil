@@ -375,7 +375,7 @@ defns helpers :: '' ::=
  defn succ w1 = exp :: :: succ :: '' by
 
  -------------------------------- :: succ
- succ num:sz = num:sz1 .+ 1:sz1
+ succ num:sz = num:sz .+ 1:sz
 
 
 defns reduce_exp :: '' ::=
