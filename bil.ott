@@ -416,7 +416,7 @@ defns reduce_exp :: '' ::=
  delta |- (v1 with [w1,ed]:8 <- v3)[w2,ed]:8 ~> v1[w2,ed]:8
 
  ---------------------------------------------------------- :: load_un_mem
- delta |- unknown[str]: mem<nat,sz> ~> unknown[str]:imm<sz>
+ delta |- (unknown[str]:t)[v,ed]:sz ~> unknown[str]:imm<sz>
 
  succ w = w'
  --------------------------------------------------- :: load_word_be
