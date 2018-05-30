@@ -69,8 +69,8 @@ grammar
    | unknown [ string ] : type                 :: M    :: bot
 
  word,w :: word_ ::=
+   | num : nat                                 ::     :: word
    | (w)                                        :: S    :: paren
-   | num : nat                                 :: S    :: word
    | 1 : nat                                   :: S    :: one
    | true                                       :: S    :: true
    {{ com -- sugar for 1:1 }}
@@ -205,7 +205,7 @@ formula :: formula_ ::=
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
- | ( var , val ) in delta   :: M :: in_env
+ | ( var , val ) isin delta   :: M :: in_env
  | var notin dom ( delta )   :: M :: notin_env
    {{ tex [[var]] [[notin]] \mathsf{dom}([[delta]]) }}
 
@@ -222,7 +222,7 @@ terminals :: terminals_ ::=
   | >>              ::   :: lsr                     {{ tex \gg}}
   | ~>>             ::   :: asr                     {{ tex \ggg}}
   | <<              ::   :: lsl                     {{ tex \ll}}
-  | in        :: :: in {{ tex \in }}
+  | isin        :: :: in {{ tex \in }}
   | notin     :: :: notin {{ tex \notin }}
 
 
@@ -238,15 +238,6 @@ defns typing_exp :: '' ::=
 
  ----------------- :: int
  num:sz :: imm<sz>
-
-
- ----------------- :: true
- true :: imm<1>
-
-
- ----------------- :: false
- false :: imm<1>
-
 
  e1 :: mem<nat,sz>
  e2 :: imm<nat>
@@ -313,11 +304,6 @@ defns typing_stmt :: '' ::=
  stmt is ok
  ------------------------------ :: seq_one
  {stmt}  is ok
-
- s1 is ok
- s2 is ok
- ----------------------------- :: seq_two
- {s1;s2} is ok
 
  s1 is ok
  {s2; ..; sn} is ok
@@ -389,14 +375,14 @@ defns helpers :: '' ::=
  defn succ w1 = exp :: :: succ :: '' by
 
  -------------------------------- :: succ
- succ num:sz = num:sz1 .+ 1:sz1
+ succ num:sz = num:sz .+ 1:sz
 
 
 defns reduce_exp :: '' ::=
 
  defn delta |- exp ~> exp' :: :: exp :: '' by
 
- (var,v) in delta
+ (var,v) isin delta
 ------------------ :: var_in
  delta |- var ~> v
 
@@ -430,7 +416,7 @@ defns reduce_exp :: '' ::=
  delta |- (v1 with [w1,ed]:8 <- v3)[w2,ed]:8 ~> v1[w2,ed]:8
 
  ---------------------------------------------------------- :: load_un_mem
- delta |- unknown[str]: mem<nat,sz> ~> unknown[str]:imm<sz>
+ delta |- (unknown[str]:t)[v,ed]:sz ~> unknown[str]:imm<sz>
 
  succ w = w'
  --------------------------------------------------- :: load_word_be
