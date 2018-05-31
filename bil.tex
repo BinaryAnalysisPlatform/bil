@@ -119,12 +119,15 @@ represented symbolically as a list of assignments:
 The following syntax is used to specify symbolic formulas in premises
 of judgments.
 
-We use $\Delta$ to denote set of bindings of variables to values. The
-$\Delta$ context is represented as list of pairs. We write
-$(var,v) \in \Delta$ to indicate that the value $v$ is the right-most
-binding of $var$ in $\Delta$.  Additionally, we write
+We use $\Gamma$ to represent ``typing contexts'' (a list of in-scope
+variables and their types) and use $\Delta$ to denote ``evaluation
+environments'' (a set of bindings of variables to values). The $\Delta$
+context is represented as list of
+pairs. We write $(var,v) \in \Delta$ to indicate that the value $v$ is
+the right-most binding of $var$'s identifier in $\Delta$.  Additionally, we write
 $\mathsf{dom}(\Delta)$ for $\Delta$'s {\em domain} (the set of
-variables for which it contains values).
+variables for which it contains values).  We deifne $var \in \Gamma$
+and $\mathsf{dom}(\Delta)$ similarly.
 
 We also add a small set of operations over natural numbers, like
 comparison and arithmetics. Natural numbers are mostly used to reason
@@ -135,6 +138,7 @@ We also add syntax for equality comparison for values and variables.
 
 
 \ottgrammartabular{
+\ottgamma\ottinterrule
 \ottdelta\ottinterrule
 }
 
@@ -163,9 +167,42 @@ semantics of an instruction is described by the $\mathit{bil}$ program.
 \section{Typing}
 \label{sec:typing}
 
-This section defines typing rules for BIL programs. Since BIL values
-bears type information with them we do not need typing environment, so
-the rules are fairly straightforward.
+This section defines typing rules for BIL programs.
+
+BIL statement-level variables represent global state, and are
+implicitly declared at their first use.  While variables carry their
+type with them, it is still necessary to track them in a context
+during type checking.  This is required to rule out programs like:
+\begin{verbatim}
+if (foo) then {x:imm<1> = 0} else {x:imm<32> = 42};
+bar
+\end{verbatim}
+Such a program would leave the type associated with {\tt x} unclear in
+{\tt bar}.
+
+To unify variables from different statements, we define a judgement
+$[[G1 |_| G2 = G3]]$, which indicates that the variable declarations
+in $[[G1]]$ and $[[G2]]$ are compatible and are combined in $[[G3]]$.
+Here, ``compatible'' means that each variable either occurs in only on
+of $[[G1]]$ and $[[G2]]$, or has the same type in both.
+
+\ottdefnsctxXXjoin
+
+We now present the typing rules for BIL statements and expressions.
+Because variables are implicitly declared at the first assignment, our
+type-checking rules captures the intuition that the collection of known
+variables may expand as the result of executing a statement.  It has
+the form $[[G1 |- s => G2]]$, which indicates that $[[s]]$ typechecks
+when $[[G1]]$ is the list of previously-encountered variables (and
+thier types), and $[[G2]]$ is an expanded context that includes any
+variables whose first use occurs in $[[s]]$.
+
+This intuition is embodied by the rule $\ottdrulename{t\_move}$, which
+checks a move instruction $[[id:t := exp]]$.  Here the premise $[[G
+    |_| [id:t] = G' ]]$ uses the previously-mentioned context union
+operation to check that the variable $id$ of type $t$ is compatible
+with the current context $[[G]]$.  This judgement does not hold if
+there's a previous binding for $id$ with a different type.
 
 \ottdefnstypingXXstmt
 
