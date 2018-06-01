@@ -163,13 +163,29 @@ semantics of an instruction is described by the $\mathit{bil}$ program.
 \section{Typing}
 \label{sec:typing}
 
-This section defines typing rules for BIL programs. Since BIL values
-bears type information with them we do not need typing environment, so
-the rules are fairly straightforward.
+This section defines typing rules for BIL programs.  We define four
+judgements: $[[G |- bil is ok]]$ for programs, $[[G |- s is ok]]$ for
+statements, $[[G |- e :: t]]$ for expressions, and $[[G is ok]]$ for
+contexts.
+
+BIL statement-level variables represent global state, and are
+implicitly declared at their first use.  While variables carry their
+type with them, it is still necessary to track them in a context
+during type checking.  This is required to rule out programs like:
+\begin{verbatim}
+if (foo) then {x:imm<1> = 0} else {x:imm<32> = 42};
+bar
+\end{verbatim}
+Such a program would leave the type associated with {\tt x} unclear in
+{\tt bar}.  This is ruled out because the typing rules are set up such
+that $[[G |- bil is ok]]$ implies $[[G is ok]]$, which requires that
+each variable has a single type.
 
 \ottdefnstypingXXstmt
 
 \ottdefnstypingXXexp
+
+\ottdefnstypingXXgamma
 
 \clearpage
 
