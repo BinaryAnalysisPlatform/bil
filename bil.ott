@@ -193,7 +193,11 @@ grammar
    | []                                         ::      :: nil  {{ com -- empty }}
    | delta [ var <- val ]                       ::      :: cons {{ com -- extend }}
 
-
+ gamma {{ tex \Gamma }}, G {{ tex \Gamma }} :: gamma_ ::=
+   | []                                         ::      :: nil  {{ com -- empty }}
+   | gamma , var                                ::      :: cons {{ com -- extend }}
+   | [ var ]                                    :: S    :: singleton {{ com -- singleton list }}
+   | ( G )                                      :: S    :: parens
 
 formula :: formula_ ::=
  | judgement                ::   :: judgement
@@ -208,6 +212,9 @@ formula :: formula_ ::=
  | ( var , val ) isin delta   :: M :: in_env
  | var notin dom ( delta )   :: M :: notin_env
    {{ tex [[var]] [[notin]] \mathsf{dom}([[delta]]) }}
+ |  var isin gamma   :: M :: in_ctx
+ | id notin dom ( gamma )   :: M :: notin_ctx
+   {{ tex [[id]] [[notin]] \mathsf{dom}([[gamma]]) }}
 
 terminals :: terminals_ ::=
   | ->				::   ::	rarrow					{{ tex \rightarrow }}
@@ -229,128 +236,138 @@ terminals :: terminals_ ::=
 subrules
   val <:: exp
 
+defns typing_gamma :: '' ::=
+ defn G is ok :: :: typ_gamma :: tg_ by
+
+ --------- :: nil
+ [] is ok
+
+ id notin dom(G)
+ G is ok
+ --------------- :: cons
+ (G, id:t) is ok
+
 defns typing_exp :: '' ::=
- defn exp '::' type :: :: type_exp :: t_ by
+ defn G |- exp '::' type :: :: type_exp :: t_ by
 
-
+ id:t isin G
+ G is ok
  ----------------- :: var
- id:t :: t
+ G |- id:t :: t
 
+ G is ok
  ----------------- :: int
- num:sz :: imm<sz>
+ G |- num:sz :: imm<sz>
 
- e1 :: mem<nat,sz>
- e2 :: imm<nat>
+ G |- e1 :: mem<nat,sz>
+ G |- e2 :: imm<nat>
  -------------------------- :: load
- e1 [e2, ed] : sz :: imm<sz>
+ G |- e1 [e2, ed] : sz :: imm<sz>
 
 
- e1 :: mem<nat,sz>
- e2 :: imm<nat>
- e3 :: imm<sz>
+ G |- e1 :: mem<nat,sz>
+ G |- e2 :: imm<nat>
+ G |- e3 :: imm<sz>
  --------------------------------------------- :: store
- e1 with [e2, ed]:sz <- e3 :: mem<nat,sz>
+ G |- e1 with [e2, ed]:sz <- e3 :: mem<nat,sz>
 
 
- e1 :: imm<sz>
- e2 :: imm<sz>
+ G |- e1 :: imm<sz>
+ G |- e2 :: imm<sz>
  --------------------------------- :: bop
- e1 bop e2 :: imm<sz>
+ G |- e1 bop e2 :: imm<sz>
 
 
- e1 :: imm<sz>
+ G |- e1 :: imm<sz>
  ---------------------------------- :: uop
- uop e1 :: imm<sz>
+ G |- uop e1 :: imm<sz>
 
 
- e :: imm<nat>
+ G |- e :: imm<nat>
  --------------------- :: cast
- cast:sz[e] :: imm<sz>
+ G |- cast:sz[e] :: imm<sz>
 
 
- var :: t
- e1  :: t
- e2  :: t'
+ G |- e1  :: t
+ G, id:t |- e2  :: t'
  ------------------------ :: let
- let var = e1 in e2 :: t'
+ G |- let id:t = e1 in e2 :: t'
 
-
+ G is ok
  ------------------------- :: unknown
- unknown[str]:t :: t
+ G |- unknown[str]:t :: t
 
 
- e1 :: imm<1>
- e2 :: t
- e3 :: t
+ G |- e1 :: imm<1>
+ G |- e2 :: t
+ G |- e3 :: t
  -------------------------- :: ite
- if e1 then e2 else e3 :: t
+ G |- if e1 then e2 else e3 :: t
 
- e :: imm<sz>
+ G |- e :: imm<sz>
  sz1 >= sz2
  ---------------------------------- :: extract
- extract:sz1:sz2[e] :: imm<sz1-sz2+1>
+ G |- extract:sz1:sz2[e] :: imm<sz1-sz2+1>
 
 
- e1 :: imm<sz1>
- e2 :: imm<sz2>
+ G |- e1 :: imm<sz1>
+ G |- e2 :: imm<sz2>
  ---------------------------------- :: concat
- e1 @ e2 :: imm<sz1+sz2>
-
+ G |- e1 @ e2 :: imm<sz1+sz2>
 
 defns typing_stmt :: '' ::=
 
- defn bil is ok :: :: type_seq :: t_ by
+ defn G |- bil is ok :: :: type_seq :: t_ by
 
- stmt is ok
+ G |- stmt is ok
  ------------------------------ :: seq_one
- {stmt}  is ok
+ G |- {stmt} is ok
 
- s1 is ok
- {s2; ..; sn} is ok
+ G |- s1 is ok
+ G |- {s2; ..; sn} is ok
  ------------------------------ :: seq_rec
- {s1; s2; ..; sn} is ok
+ G |- {s1; s2; ..; sn} is ok
 
 
- defn stmt is ok :: :: type_stmt :: t_ by
+ defn G |- stmt is ok :: :: type_stmt :: t_ by
 
 
- var :: t
- exp :: t
+ G |- var :: t
+ G |- exp :: t
  --------------------------- :: move
- var := exp is ok
+ G |- var := exp is ok
 
 
- exp :: imm<nat>
+ G |- exp :: imm<nat>
  --------------------------- :: jmp
- jmp exp is ok
+ G |- jmp exp is ok
 
-
+ G is ok
  --------------------------- :: cpuexn
- cpuexn(num) is ok
+ G |- cpuexn(num) is ok
 
-
+ G is ok
  ---------------------------- :: special
- special(str) is ok
+ G |- special(str) is ok
 
 
- e :: imm<1>
- seq is ok
+ G |- e :: imm<1>
+ G |- seq is ok
  ---------------------------- :: while
- while (e) seq is ok
+ G |- while (e) seq is ok
 
 
- e :: imm<1>
- seq is ok
+ G |- e :: imm<1>
+ G |- seq is ok
  ---------------------------- :: ifthen
- if (e) seq is ok
+ G |- if (e) seq is ok
 
 
- e :: imm<1>
- seq1 is ok
- seq2 is ok
+ G |- e :: imm<1>
+ G |- seq1 is ok
+ G |- seq2 is ok
  ---------------------------- :: if
- if (e) seq1 else seq2 is ok
-
+ G |- if (e) seq1 else seq2 is ok
 
 
 
