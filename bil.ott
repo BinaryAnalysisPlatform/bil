@@ -43,6 +43,10 @@ grammar
    {{ com -- update a storage $e_1$ with binding $e_2$ $\leftarrow$ $e_3$ }}
    | e1 bop e2                                  ::      :: binop
    {{ com -- perform binary operation on $e_1$ and $e_2$}}
+   | e1 cop e2                                  ::      :: cmpop
+   {{ com -- perform binary comparison on $e_1$ and $e_2$}}
+   | e1 sop e2                                  ::      :: shiftop
+   {{ com -- perform binary shift on $e_1$ by $e_2$}}
    | uop e1                                     ::      :: unop
    {{ com -- perform an unary operation on $e_1$}}
    | cast : nat [ e ]                           ::      :: cast
@@ -141,19 +145,24 @@ grammar
    | %                                          ::      :: mod {{ com -- modulo }}
    | %$                                         ::      :: smod {{ com -- signed modulo }}
         {{ tex \stackrel{signed} \% }}
+   | &                                          ::      :: and {{ com -- bitwise and }}
+   | |                                          ::      :: or  {{ com -- bitwise or }}
+   | xor                                        ::      :: xor {{ com -- bitwise xor }}
+
+ sop :: shiftop_ ::=
    | '<<'                                       ::      :: lshift
         {{ com -- logical shift left }}
    | '>>'                                       ::      :: rshift
         {{ com -- logical shift right }}
    | '~>>'                                      ::      :: arshift
         {{ com -- arithmetic shift right}}
-   | &                                          ::      :: and {{ com -- bitwise and }}
-   | |                                          ::      :: or  {{ com -- bitwise or }}
-   | xor                                        ::      :: xor {{ com -- bitwise xor }}
+
+ cop :: cmpop_ ::=
    | =                                          ::      :: eq  {{ com -- equality }}
    | <>                                         ::      :: neq {{ com -- non-equality }}
    | <                                          ::      :: lt  {{ com -- less than }}
-   | '<='                                       ::      :: le  {{ com -- less than or equal}}
+   | '<='                                       ::      :: le
+        {{ tex \leq }} {{ com -- less than or equal}}
    | '<$'                                       ::      :: slt {{ com -- signed less than}}
         {{ tex \stackrel{signed} < }}
    | '<=$'                                      ::      :: sle
@@ -277,6 +286,15 @@ defns typing_exp :: '' ::=
  --------------------------------- :: bop
  G |- e1 bop e2 :: imm<sz>
 
+ G |- e1 :: imm<sz>
+ G |- e2 :: imm<nat>
+ --------------------------------- :: sop
+ G |- e1 sop e2 :: imm<sz>
+
+ G |- e1 :: imm<sz>
+ G |- e2 :: imm<sz>
+ --------------------------------- :: cop
+ G |- e1 cop e2 :: imm<1>
 
  G |- e1 :: imm<sz>
  ---------------------------------- :: uop
@@ -493,7 +511,7 @@ defns reduce_exp :: '' ::=
  ----------------------------------------------- :: ite_true
  delta |- if true then e2 else e3 ~> e2
 
- 
+
  ------------------------------------------------ :: ite_false
  delta |- if false then e2 else e3 ~> e3
 
@@ -506,6 +524,21 @@ defns reduce_exp :: '' ::=
  ----------------------------------------- :: bop_lhs
  delta |- e1 bop v2 ~> e1' bop v2
 
+ delta |- e2 ~> e2'
+ ------------------------------------------ :: sop_rhs
+ delta |- e1 sop e2 ~> e1 sop e2'
+
+ delta |- e1 ~> e1'
+ ----------------------------------------- :: sop_lhs
+ delta |- e1 sop v2 ~> e1' sop v2
+
+ delta |- e2 ~> e2'
+ ------------------------------------------ :: cop_rhs
+ delta |- e1 cop e2 ~> e1 cop e2'
+
+ delta |- e1 ~> e1'
+ ----------------------------------------- :: cop_lhs
+ delta |- e1 cop v2 ~> e1' cop v2
 
  -------------------------------------------------------- :: bop_unk_rhs
  delta |- e bop unknown[str]:t ~> unknown[str]:t
@@ -513,6 +546,18 @@ defns reduce_exp :: '' ::=
  -------------------------------------------------------- :: bop_unk_lhs
  delta |- unknown[str]:t bop e ~> unknown[str]:t
 
+ G |- e :: t'
+ -------------------------------------------------------- :: sop_unk_rhs
+ delta |- e sop unknown[str]:t ~> unknown[str]:t'
+
+ -------------------------------------------------------- :: sop_unk_lhs
+ delta |- unknown[str]:t sop e ~> unknown[str]:t
+
+ -------------------------------------------------------- :: cop_unk_rhs
+ delta |- e cop unknown[str]:t ~> unknown[str]:imm<1>
+
+ -------------------------------------------------------- :: cop_unk_lhs
+ delta |- unknown[str]:t cop e ~> unknown[str]:imm<1>
 
  -------------------------------------- :: plus
  delta |- w1 + w2 ~> w1 .+ w2
