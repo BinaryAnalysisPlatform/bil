@@ -207,6 +207,9 @@ grammar
    | gamma , var                                ::      :: cons {{ com -- extend }}
    | [ var ]                                    :: S    :: singleton {{ com -- singleton list }}
    | ( G )                                      :: S    :: parens
+   | dom( delta )                               :: M    :: dom_delta
+   {{ tex \mathsf{dom}([[delta]])}}
+   {{ com -- domain of a runtime binding context}}
 
 formula :: formula_ ::=
  | judgement                ::   :: judgement
@@ -546,7 +549,7 @@ defns reduce_exp :: '' ::=
  -------------------------------------------------------- :: bop_unk_lhs
  delta |- unknown[str]:t bop e ~> unknown[str]:t
 
- G |- e :: t'
+ dom(delta) |- e :: t'
  -------------------------------------------------------- :: sop_unk_rhs
  delta |- e sop unknown[str]:t ~> unknown[str]:t'
 
