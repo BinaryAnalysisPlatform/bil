@@ -1,8 +1,7 @@
 embed
 {{ coq
 Require Import String.
-Require Import bbv.Word.
-}}
+Require Import bbv.Word. }}
 
 indexvar index, m, n ::= {{ com subscripts}}
                          {{ coq nat }} {{ coq-equality }}
@@ -23,8 +22,7 @@ grammar
    | { addr = w1 ; size = w2; code = bil }      ::      :: insn
 
  bil,seq :: seq_ ::=
-   | { s1 ; .. ; sn }                           :: S    :: many
-   {{coq ([[s1 .. sn]])}}
+   | { s1 ; .. ; sn }                           ::      :: many
 
  stmt,s :: stmt_ ::=
    | var := exp                                 ::      :: move
@@ -208,7 +206,7 @@ grammar
    | -                                          ::      :: neg {{ com -- unary negation}}
    | ~                                          ::      :: not {{ com -- bitwise complement}}
 
- nat,sz :: nat_ ::=
+ nat,sz :: nat_ ::= {{ coq nat }}
    | 0                                          :: M    :: zero
    {{ coq 0 }}
    | 1                                          :: M    :: one
@@ -240,22 +238,30 @@ grammar
    | mem < sz1 , sz2 >                          ::      :: mem
    {{ com -- memory with address size $sz_1$ and element size $sz_2$}}
 
- delta {{ tex \Delta}} :: delta_ ::=
-   | []                                         ::      :: nil  {{ com -- empty }}
-   | delta [ var <- val ]                       ::      :: cons {{ com -- extend }}
+ delta {{ tex \Delta}} :: delta_ ::= {{coq (list (var * exp)) }}
+   | []                                         ::      :: nil
+   {{ com -- empty }}
+   {{ coq nil }}
+   | delta [ var <- val ]                       ::      :: cons
+   {{ com -- extend }}
+   {{ coq (cons ([[var]],[[val]]) [[delta]]) }}
 
- gamma {{ tex \Gamma }}, G {{ tex \Gamma }} :: gamma_ ::=
-   | []                                         ::      :: nil  {{ com -- empty }}
-   | gamma , var                                ::      :: cons {{ com -- extend }}
+ gamma {{ tex \Gamma }}, G {{ tex \Gamma }} :: gamma_ ::= {{ coq (list var) }}
+   | []                                         ::      :: nil
+   {{ com -- empty }}
+   {{ coq nil }}
+   | gamma , var                                ::      :: cons
+   {{ com -- extend }}
+   {{ coq (cons [[var]] [[gamma]]) }}
    | [ var ]                                    :: S    :: singleton
    {{ com -- singleton list }}
-   {{ coq (gamma_cons [[var]] gamma_nil) }}
+   {{ coq [ [[var]] ] }}
    | ( G )                                      :: S    :: parens
    {{ coq ([[G]]) }}
    | dom( delta )                               :: M    :: dom_delta
    {{ tex \mathsf{dom}([[delta]])}}
    {{ com -- domain of a runtime binding context}}
-   {{ coq (dom_delta [[delta]]) }}
+   {{ coq (map fst [[delta]]) }}
 
 formula :: formula_ ::=
  | judgement                ::   :: judgement
@@ -269,15 +275,15 @@ formula :: formula_ ::=
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
      {{ coq ([[e1]] = [[e2]]) }}
  | ( var , val ) isin delta   :: M :: in_env
-   {{ coq ([[isin]] ([[var]],[[val]]) [[delta]]) }}
+   {{ coq (In ([[var]],[[val]]) [[delta]]) }}
  | var notin dom ( delta )   :: M :: notin_env
    {{ tex [[var]] [[notin]] \mathsf{dom}([[delta]]) }}
-   {{ coq ([[notin]] [[var]] (gamma_dom_delta [[delta]])) }}
+   {{ coq (~ (In [[var]] (gamma_dom_delta [[delta]]))) }}
  |  var isin gamma   :: M :: in_ctx
-   {{ coq ([[isin]] [[var]] [[gamma]]) }}
+   {{ coq (In [[var]] [[gamma]]) }}
  | id notin dom ( gamma )   :: M :: notin_ctx
    {{ tex [[id]] [[notin]] \mathsf{dom}([[gamma]]) }}
-   {{ coq ([[notin]] [[id]] [[gamma]]) }}
+   {{ coq (~ (In [[id]] (map (fun v => match v with var_var id _ => id end) [[gamma]]))) }}
 
 terminals :: terminals_ ::=
   | ->				::   ::	rarrow					{{ tex \rightarrow }}
@@ -395,10 +401,10 @@ defns typing_stmt :: '' ::=
  ------------------------------ :: seq_one
  G |- {stmt} is ok
 
- G |- s1 is ok
- G |- {s2; ..; sn} is ok
+ G |- s is ok
+ G |- {s1; ..; sn} is ok
  ------------------------------ :: seq_rec
- G |- {s1; s2; ..; sn} is ok
+ G |- {s; s1; ..; sn} is ok
 
 
  defn G |- stmt is ok :: :: type_stmt :: t_ by
