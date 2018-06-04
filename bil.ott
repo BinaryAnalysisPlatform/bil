@@ -371,7 +371,7 @@ defns typing_exp :: '' ::=
  G |- e :: imm<sz>
  sz1 >= sz2
  ---------------------------------- :: extract
- G |- extract:sz1:sz2[e] :: imm<sz1-sz2+1>
+ G |- extract:sz1:sz2[e] :: imm<(sz1-sz2)+1>
 
 
  G |- e1 :: imm<sz1>
@@ -501,11 +501,11 @@ defns reduce_exp :: '' ::=
 
  succ w = w'
  --------------------------------------------------- :: load_word_be
- delta |- v[w,be]:sz ~> v[w,be]:8 @ v[w', be]:(sz-8)
+ delta |- v[w,be]:sz ~> v[w,be]:8 @ (v[w', be]:(sz-8))
 
  succ w = w'
  --------------------------------------------------- :: load_word_el
- delta |- v[w,el]:sz ~> v[w',el]:(sz-8) @ v[w,be]:8
+ delta |- v[w,el]:sz ~> v[w',el]:(sz-8) @ (v[w,be]:8)
 
 
 
