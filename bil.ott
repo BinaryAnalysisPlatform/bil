@@ -1,7 +1,18 @@
+embed
+{{ coq
+Require Import String.
+Require Import bbv.Word.
+}}
+
 indexvar index, m, n ::= {{ com subscripts}}
+                         {{ coq nat }} {{ coq-equality }}
 metavar id ::= {{ com a literal for variable}}
+               {{ coq string }} {{ coq-equality exact string_dec. }}
 metavar num  ::= {{ com number literal }}
+                 {{ coq nat }} {{ coq-equality }}
 metavar string,str ::= {{ com quoted string literal }}
+                       {{ coq string }}
+                       {{ coq-equality exact string_dec. }}
 
 
 
@@ -71,12 +82,9 @@ grammar
    | id : type                                 ::      :: var
 
  val,v :: val_ ::=
-   | word                                      :: M    :: imm
-   {{ coq (exp_int [[word]])}}
-   | v1 with [ v2 , endian ] : nat <- v3       :: M    :: mem
-   {{ coq (exp_store [[v1]] [[v2]] [[endian]] [[nat]] [[v3]])}}
-   | unknown [ string ] : type                 :: M    :: bot
-   {{ coq (exp_unk [[string]] [[type]])}}
+   | word                                      ::      :: imm
+   | v1 with [ v2 , endian ] : nat <- v3       ::      :: mem
+   | unknown [ string ] : type                 ::      :: bot
 
  word,w :: word_ ::=
    | num : nat                                 ::     :: word
