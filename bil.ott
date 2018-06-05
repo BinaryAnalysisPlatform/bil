@@ -66,6 +66,14 @@ Definition sw_lift_shiftop_in {A} (op : forall sz , word sz -> nat -> A sz)
 Definition sw_lift_shiftop (op : forall sz, word sz -> nat -> word sz)
            (w1 : sized_word) (w2 : sized_word) : sized_word :=
   existT word _ (sw_lift_shiftop_in op w1 w2).
+
+(*TODO: implement all functions below this line *)
+Definition sw_lt (w1 : sized_word) (w2 : sized_word) : sized_word := existT _ _ WO.
+Definition sw_slt (w1 : sized_word) (w2 : sized_word) : sized_word := existT _ _ WO.
+
+Definition ext (w : sized_word) (hi lo : nat) := w.
+Definition ext_signed (w : sized_word) (hi lo : nat) := w.
+
 }}
 
 indexvar index, m, n ::= {{ com subscripts}}
@@ -216,21 +224,21 @@ grammar
    | w1 .< w2                                   :: S    :: less
         {{ tex [[w1]] \stackrel{bv} < [[w2]] }}
         {{ com -- less than }}
-        {{ coq ([[w1]] < [[w2]]) }}
+        {{ coq (sw_lt [[w1]] [[w2]]) }}
    | w1 .<$ w2                                   :: S    :: signed_less
         {{ tex [[w1]] \stackrel{sbv} < [[w2]] }}
         {{ com -- signed less than }}
-        {{ coq ([[w1]] <s [[w2]]) }}
+        {{ coq (sw_slt [[w1]] [[w2]]) }}
    | w1 .@ w2                                   :: S    :: concat
         {{ tex [[w1]] \stackrel{bv} . [[w2]] }}
         {{ com -- concatenation }}
-        {{ coq (combine _ [[w1]] _ [[w2]]) }}
+        {{ coq (existT _ _ (combine (projT2 [[w1]]) (projT2 [[w2]]))) }}
    | ext word ~ hi : sz1 ~ lo : sz2           :: S    :: extend_extract
         {{ com -- extract/extend }}
-        {{ coq (ext _ [[word]] [[hi]] [[lo]] _) }}
+        {{ coq (ext [[word]] [[hi]] [[lo]]) }}
    | exts word ~ hi : sz1 ~ lo : sz2         :: S    :: extend_extract_signed
         {{ com -- signed extract/extend }}
-        {{ coq (ext_signed _ [[word]] [[hi]] [[lo]] _) }}
+        {{ coq (ext_signed [[word]] [[hi]] [[lo]]) }}
 
 
 
@@ -271,7 +279,7 @@ grammar
    | -                                          ::      :: neg {{ com -- unary negation}}
    | ~                                          ::      :: not {{ com -- bitwise complement}}
 
- nat,sz :: nat_ ::= {{ coq nat }}
+ nat,sz,hi,lo :: nat_ ::= {{ coq nat }}
    | 0                                          :: M    :: zero
    {{ coq 0 }}
    | 1                                          :: M    :: one
@@ -519,25 +527,6 @@ defns typing_stmt :: '' ::=
  G |- if (e) seq1 else seq2 is ok
 
 
-% TODO: these rules are really broken; fix
-% they are currently in a big-step-ish style that doesn't work
-defns program :: '' ::=
-
-
- defn delta , w , var ~> delta' , w' , var' :: :: step :: '' by
-
- delta,w,var |-> {addr=w1; size=w2; code=bil}
- delta, (w1.+w2) |- bil ~> delta',w3, {}
- ---------------------------------------------------------- :: step_rule
- delta,w,var  ~> delta',w3,var
-
-
- defn delta , w , var |-> insn :: :: decode :: '' by
-
- -------------------------------------------------- :: decode_rule
- delta,w,var |-> insn
-
-
 defns helpers :: '' ::=
  defn succ w1 = exp :: :: succ :: '' by
 
@@ -601,7 +590,7 @@ defns reduce_exp :: '' ::=
 %% STORE                                             %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
- 
+
 
  delta |- e3 ~> e3'
  ------------------------------------------------------------------------- :: store_step_val
@@ -825,9 +814,22 @@ defns reduce_exp :: '' ::=
  delta |- unsigned:sz[w] ~> low:sz[w]
 
 
+defns multistep_exp :: '' ::=
+
+ defn delta |- exp ~>* exp' :: :: mexp :: '' by
+
+ ---------------- :: refl
+ delta |- e ~>*  e
+
+ delta |- e1 ~> e2
+ delta |- e2 ~>* e3
+ ------------------ :: reduce
+ delta |- e1 ~>* e3
+
+
 defns reduce_stmt :: '' ::=
 
- defn delta , word |- stmt ~> delta' , word' :: :: stmt :: '' by
+ defn delta , word |- stmt ~> delta' , word' :: :: stmt_step :: '' by
 
 
  delta |- e ~>* v
@@ -876,11 +878,11 @@ defns reduce_stmt :: '' ::=
 
 
 
- defn delta , word |- seq ~> delta' , word' , seq' :: :: seq :: '' by
+ defn delta , word |- seq ~> delta' , word' , seq' :: :: seq_step :: '' by
 
- delta,word |- s1 ~> delta',word'
+ delta,word |- s ~> delta',word'
  ------------------------------------------------------------- :: seq_rec
- delta,word |- {s1; s2; ..; sn} ~> delta', word', {s2; ..; sn}
+ delta,word |- {s; s1; ..; sn} ~> delta', word', {s1; ..; sn}
 
  delta,word |- s1 ~> delta',word'
  ------------------------------------------------------------- :: seq_last
@@ -893,15 +895,22 @@ defns reduce_stmt :: '' ::=
 
  ------------------------------------------------------------- :: seq_nil
  delta,word |- {} ~> delta, word, {}
- 
-defns multistep_exp :: '' ::=
 
- defn delta |- exp ~>* exp' :: :: mexp :: '' by
 
- ---------------- :: refl
- delta |- e ~>*  e
+% TODO: these rules are really broken; fix
+% they are currently in a big-step-ish style that doesn't work
+defns program :: '' ::=
 
- delta |- e1 ~> e2
- delta |- e2 ~>* e3
- ------------------ :: reduce
- delta |- e1 ~>* e3
+
+ defn delta , w , var ~> delta' , w' , var' :: :: step :: '' by
+
+ delta,w,var |-> {addr=w1; size=w2; code=bil}
+ delta, (w1.+w2) |- bil ~> delta',w3, {}
+ ---------------------------------------------------------- :: step_rule
+ delta,w,var  ~> delta',w3,var
+
+
+ defn delta , w , var |-> insn :: :: decode :: '' by
+
+ -------------------------------------------------- :: decode_rule
+ delta,w,var |-> insn
