@@ -78,8 +78,6 @@ metavar string,str ::= {{ com quoted string literal }}
                        {{ coq string }}
                        {{ coq-equality exact string_dec. }}
 
-
-
 grammar
 
 
@@ -128,7 +126,7 @@ grammar
    {{ com -- perform an unary operation on $e_1$}}
    | cast : nat [ e ]                           ::      :: cast
    {{ com -- extract or extend bitvector $e$ }}
-   | let var = e1 in e2                         ::      :: let
+   | let var = e1 in e2                         ::      :: let (+ bind var in e2 +)
    {{ com -- bind $e_1$ to $var$ in expression $e_2$}}
    | unknown [ string ] : type                  ::      :: unk
    {{ com -- unknown or undefined value of a given $type$ }}
@@ -140,9 +138,9 @@ grammar
    {{ com -- concatenate two bitvector $e_1$ to $e_2$ }}
    | [ e1 / var ] e2                              :: M :: subst
    {{ com -- the (capture avoiding) substitution of $e_1$ for $var$ in $e_2$ }}
-   {{ coq (subst [[e1]] [[var]] [[e2]])}}
+   {{ coq (subst_exp [[e1]] [[var]] [[e2]])}}
 
- var :: var_ ::=
+ var :: var_ ::= {{ coq-equality }}
    | id : type                                 ::      :: var
 
  val,v :: val_ ::=
@@ -296,10 +294,10 @@ grammar
    | high                                       ::      :: high {{ com -- extract high bits}}
    | signed                                     ::      :: signed
    {{ com -- extend with sign bit}}
-   | unsigned                                   ::      :: unsinged
+   | unsigned                                   ::      :: unsigned
    {{ com -- extend with zero}}
 
- type,t :: type_ ::=
+ type,t :: type_ ::= {{ coq-equality }}
    | imm < sz >                                 ::      :: imm
    {{ com -- immediate of size $sz$}}
    | mem < sz1 , sz2 >                          ::      :: mem
@@ -371,6 +369,12 @@ terminals :: terminals_ ::=
 
 subrules
   val <:: exp
+
+substitutions
+        single exp var :: subst
+
+freevars
+        exp var ::fv
 
 defns typing_gamma :: '' ::=
  defn G is ok :: :: typ_gamma :: tg_ by
