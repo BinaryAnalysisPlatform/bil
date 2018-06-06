@@ -3,76 +3,9 @@ embed
 Require Import String.
 Require Import bbv.Word.
 
-Definition sized_word : Set := {sz : nat & (word sz)}.
-
 Definition bbv := word.
 
-Definition sized {sz} w : sized_word := existT _ sz w.
-
-(* As per the BAP implementation, lifting returns a result with the
-   width of the first argument.
- *)
-Definition sw_lift_binop_in {A} (op : forall sz, word sz -> word sz -> A sz)
-           (w1 : sized_word) (w2 : sized_word)
-  : A (projT1 w1) :=
-let (sz1,w1') as s return A (projT1 s) := w1 in
-let (sz2,w2') := w2 in
- op _ w1' ($ (# w2')).
-
-Lemma lift_binop_in_equal_sizes : forall {A} op sz (w1 w2 : word sz),
-    sw_lift_binop_in (A:=A) op (sized w1) (sized w2) = op sz w1 w2.
-Proof.
-intros A op sz w1 w2.
-simpl.
-rewrite -> natToWord_wordToNat.
-reflexivity.
-Qed.
-
-Definition sw_lift_binop (op : forall sz, word sz -> word sz -> word sz)
-           (w1 : sized_word) (w2 : sized_word) : sized_word :=
-  existT word _ (sw_lift_binop_in op w1 w2).
-
-
-Lemma lift_binop_equal_sizes : forall op sz (w1 w2 : word sz),
-    sw_lift_binop op (sized w1) (sized w2) = existT _ _ (op sz w1 w2).
-Proof.
-intros op sz w1 w2.
-unfold sw_lift_binop.
-rewrite -> lift_binop_in_equal_sizes.
-simpl.
-reflexivity.
-Qed.
-
-Definition sw_lift_cmpop (op : forall sz, word sz -> word sz -> word 1)
-           (w1 : sized_word) (w2 : sized_word) : sized_word :=
-  existT word _ (sw_lift_binop_in op w1 w2).
-
-Lemma lift_cmpop_equal_sizes : forall op sz (w1 w2 : word sz),
-    sw_lift_cmpop op (sized w1) (sized w2) = existT _ _ (op sz w1 w2).
-Proof.
-intros op sz w1 w2.
-unfold sw_lift_cmpop.
-rewrite -> lift_binop_in_equal_sizes.
-simpl.
-reflexivity.
-Qed.
-
-Definition sw_lift_shiftop_in {A} (op : forall sz , word sz -> nat -> A sz)
-           (w1 : sized_word) (w2 : sized_word)
-  : A (projT1 w1) :=
-  op _ (let (_,w1') as s return word (projT1 s) := w1 in w1')
-     (wordToNat (sz:=(projT1 w2)) (let (sz,w2') as s return word (projT1 s) := w2 in w2')).
-
-Definition sw_lift_shiftop (op : forall sz, word sz -> nat -> word sz)
-           (w1 : sized_word) (w2 : sized_word) : sized_word :=
-  existT word _ (sw_lift_shiftop_in op w1 w2).
-
-(*TODO: implement all functions below this line *)
-Definition sw_lt (w1 : sized_word) (w2 : sized_word) : sized_word := existT _ _ WO.
-Definition sw_slt (w1 : sized_word) (w2 : sized_word) : sized_word := existT _ _ WO.
-
-Definition ext (w : sized_word) (hi lo : nat) := w.
-Definition ext_signed (w : sized_word) (hi lo : nat) := w.
+Require Import bil.Sized_Word.
 
 }}
 
