@@ -7,12 +7,18 @@ Definition bbv := word.
 
 Require Import bil.Sized_Word.
 
+Inductive var_id : Set :=
+| Reg_id (id : BinNums.Z) : var_id
+| Mem_id (id : BinNums.Z) : var_id
+| Tmp_id (id : BinNums.Z) : var_id.
+
 }}
 
 indexvar index, m, n ::= {{ com subscripts}}
                          {{ coq nat }} {{ coq-equality }}
 metavar id ::= {{ com a literal for variable}}
-               {{ coq string }} {{ coq-equality exact string_dec. }}
+               {{ coq var_id }}
+               {{ coq-equality decide equality; decide equality; decide equality. }}
 metavar num  ::= {{ com number literal }}
                  {{ coq nat }} {{ coq-equality }}
 metavar string,str ::= {{ com quoted string literal }}
@@ -451,6 +457,17 @@ defns typing_stmt :: '' ::=
  ---------------------------- :: if
  G |- if (e) seq1 else seq2 is ok
 
+defns typing_delta :: '' ::=
+
+ defn |- delta is ok :: :: type_delta :: td_ by
+
+ ---------------------- :: empty
+ |- [] is ok
+
+ |- delta is ok
+ [] |- v :: type
+ ---------------------- :: value
+ |- delta [id:type <- v] is ok
 
 defns helpers :: '' ::=
  defn succ w1 = exp :: :: succ :: '' by
