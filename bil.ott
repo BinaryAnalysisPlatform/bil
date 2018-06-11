@@ -377,7 +377,7 @@ defns typing_exp :: '' ::=
 
 
  G |- e1  :: t
- G, id:t |- e2  :: t'
+ G |- [e1/id:t] e2  :: t'
  ------------------------ :: let
  G |- let id:t = e1 in e2 :: t'
 
