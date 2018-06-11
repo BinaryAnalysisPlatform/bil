@@ -1,5 +1,6 @@
 embed
 {{ coq
+Require Import List.
 Require Import String.
 Require Import bbv.Word.
 
@@ -12,7 +13,13 @@ Inductive var_id : Set :=
 | Mem_id (id : BinNums.Z) : var_id
 | Tmp_id (id : BinNums.Z) : var_id.
 
+Definition list_mem := in_dec.
+Arguments list_mem {_}.
+Hint Unfold list_mem.
+
 }}
+
+embed {{ coq-lib list_mem }}
 
 indexvar index, m, n ::= {{ com subscripts}}
                          {{ coq nat }} {{ coq-equality }}
@@ -24,6 +31,8 @@ metavar num  ::= {{ com number literal }}
 metavar string,str ::= {{ com quoted string literal }}
                        {{ coq string }}
                        {{ coq-equality exact string_dec. }}
+metavar lid ::= {{ com number literal }}
+                 {{ coq nat }} {{ coq-equality }}
 
 grammar
 
@@ -57,6 +66,8 @@ grammar
    {{coq ([[exp]])}}
    | var                                        ::      :: var
    {{ com -- a variable }}
+   | letvar                                     ::      :: letvar
+   {{ com -- a let-bound variable }}
    | word                                       ::      :: int
    {{ com -- an immediate value }}
    | e1 [ e2 , endian ] : nat                   ::      :: load
@@ -69,7 +80,7 @@ grammar
    {{ com -- perform an unary operation on $e_1$}}
    | cast : nat [ e ]                           ::      :: cast
    {{ com -- extract or extend bitvector $e$ }}
-   | let var = e1 in e2                         ::      :: let (+ bind var in e2 +)
+   | let letvar = e1 in e2                      ::      :: let (+ bind letvar in e2 +)
    {{ com -- bind $e_1$ to $var$ in expression $e_2$}}
    | unknown [ string ] : type                  ::      :: unk
    {{ com -- unknown or undefined value of a given $type$ }}
@@ -82,6 +93,12 @@ grammar
    | [ e1 / var ] e2                              :: M :: subst
    {{ com -- the (capture avoiding) substitution of $e_1$ for $var$ in $e_2$ }}
    {{ coq (subst_exp [[e1]] [[var]] [[e2]])}}
+   | [ e1 / letvar ] e2                              :: M :: letsubst
+   {{ com -- the (capture avoiding) substitution of $e_1$ for $var$ in $e_2$ }}
+   {{ coq (letsubst_exp [[e1]] [[letvar]] [[e2]])}}
+
+ letvar :: letvar_ ::= {{ coq-equality }}
+   | ` id : type                                 ::      :: var
 
  var :: var_ ::= {{ coq-equality }}
    | id : type                                 ::      :: var
@@ -316,9 +333,11 @@ subrules
 
 substitutions
         single exp var :: subst
+        single exp letvar :: letsubst
 
 freevars
-        exp var ::fv
+        exp var :: fv
+        exp letvar :: lfv
 
 defns typing_gamma :: '' ::=
  defn G is ok :: :: typ_gamma :: tg_ by
@@ -377,9 +396,9 @@ defns typing_exp :: '' ::=
 
 
  G |- e1  :: t
- G |- [e1/id:t] e2  :: t'
- ------------------------ :: let
- G |- let id:t = e1 in e2 :: t'
+ G |- [e1/`id:t] e2  :: t'
+ -------------------------- :: let
+ G |- let `id:t = e1 in e2 :: t'
 
  G is ok
  ------------------------- :: unknown
@@ -560,12 +579,12 @@ defns reduce_exp :: '' ::=
 
 
  delta |- e1 ~> e1'
- ------------------------------------------------ :: let_step
- delta |- let var = e1 in e2 ~> let var = e1' in e2
+ --------------------------------------------------------- :: let_step
+ delta |- let letvar = e1 in e2 ~> let letvar = e1' in e2
 
 
  ------------------------------------------------- :: let_subst
- delta |- let var = v in e ~> [v/var]e
+ delta |- let letvar = v in e ~> [v/letvar]e
 
 
  delta |- e1 ~> e1'
