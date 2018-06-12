@@ -288,101 +288,88 @@ Proof.
     + firstorder.
     + apply (IHe2_2 e1).
       * assumption.
-      * 
-   - subst_lfv_neq_rec_case.
-
-intros e1 x_nin_lfv_e1 in_y_subst_e1.
-      simpl in in_y_subst_e1.
-      apply_all e1 exp.
-      apply in_app_or in in_y_subst_e1;
-        destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1].
-      tauto.
-      apply in_app_or in in_y_subst_e1;
-        destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1];
-        tauto.
-
-subst_lfv_neq_rec_case.
-
-
-
-intros e1 x_nin_lfv_e1 in_y_subst_e1;
-  simpl in in_y_subst_e1;
-  apply_all e1 exp;
-  repeat (apply in_app_or in in_y_subst_e1;
-          destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1];
-          match goal with
-          | [ IH : ?P1 -> ?P2 -> ?Q, H1 : ?P1, H2 : ?P2 |- ?Q ] =>
-            apply IH; assumption
-          end).
-    apply in_app_or in in_y_subst_e1.
-    destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1].
-      match goal with
-          | [ IH : ?P1 -> ?P2 -> ?Q, H1 : ?P1, H2 : ?P2 |- ?Q ] =>
-            apply IH; assumption
-          end.
-    apply in_app_or in in_y_subst_e1.
-    destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1].
-      match goal with
-          | [ IH : ?P1 -> ?P2 -> ?Q, H1 : ?P1, H2 : ?P2 |- ?Q ] =>
-            apply IH; assumption
-          end.
-
-  tauto.
-
-intros e1 x_nin_lfv_e1 in_y_subst_e1;
-       simpl in in_y_subst_e1;
-       apply in_app_or in in_y_subst_e1;
-       destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1];
-       apply_all e1 exp.
-     repeat match goal with
-            | [ IH : ?P1 -> ?P2 -> ?Q, H1 : ?P1, H2 : ?P2 |- ?Q ] =>
-              apply IH; assumption
-            end.
-     apply in_app_or in in_y_subst_e1;
-       destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1].
-     repeat match goal with
-            | [ IH : ?P1 -> ?P2 -> ?Q, H1 : ?P1, H2 : ?P2 |- ?Q ] =>
-              apply IH; assumption
-            end.
-     tauto.
-
-
-
- intros e1 x_nin_lfv_e1 in_y_subst_e1.
-    simpl in in_y_subst_e1.
-    apply in_app_or in in_y_subst_e1;
-      destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1].
-    + specialize (IHe2_2 e1).
-      firstorder.
-    +  apply in_app_or in in_y_subst_e1.
-       destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1].
-       * apply (IHe2_2 e1); assumption.
-       * apply (IHe2_3 e1); assumption.
-  -
-
+      * destruct (eq_letvar letvar5 x).
+        -- rewrite <- e in in_y_subst.
+           apply in_list_minus in in_y_subst.
+           destruct in_y_subst.
+           simpl in H0.
+           elim H0.
+           left; reflexivity.
+        -- apply in_list_minus in in_y_subst.
+           destruct in_y_subst.
+           assumption.
 Qed.
 
-Ltac apply_all e t:=
-  repeat match goal with
-         | [ H : forall ?e1 : t, _ |- _ ] =>
-           specialize (H e)
-         end.
+Ltac in_subst_lfv_rec_case :=
+  intros x y e1 xneq iny;
+  simpl;
+  simpl in iny;
+  repeat
+    match goal with
+    | [ H : forall (x y : letvar) (e1 : exp), _ |- _ ] =>
+      specialize H with x y e1
+    end;
+  repeat
+    match goal with
+    | [ H : ?P -> _, H' : ?P |- _ ] =>
+      specialize (H H')
+    end;
+  repeat
+    (try apply in_or_app;
+     apply in_app_or in iny;
+     destruct iny as [iny | iny];
+     match goal with
+     | [ H : ?P -> ?GL, H' : ?P |- ?GL \/ _ ] =>
+       left; apply H; assumption
+     | [ H : ?P -> ?GR, H' : ?P |- _ \/ ?GR ] =>
+       right; apply H; assumption
+     | [ |- _ \/ _ ] =>
+       right
+     end).
 
-Ltac subst_lfv_neq_rec_case in_subst :=
-  intros e1 x_nin_lfv_e1 in_y_subst_e1;
-  simpl in in_y_subst_e1;
-  apply in_app_or in in_y_subst_e1;
-  destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst_e1];
-  apply_all e1 exp;
-  match goal with
-  | [ IH : ?P1 -> ?P2 -> ?Q, H1 : ?P1, H2 : ?P2 |- ?Q ] =>
-    apply IH; assumption
-  end.
-  
-  
 
-Lemma subst_lfv_neq' : forall x y e1 e2,
-    x <> y -> In y (lfv_exp (letsubst_exp e1 x e2)) -> 
+Lemma in_subst_lfv : forall x y e1 e2,
+    x <> y ->
+    In y (lfv_exp e2) ->
+    In y (lfv_exp (letsubst_exp e1 x e2)).
+Proof.
+  intros x y e1 e2; revert x y e1; induction e2.
+  all: try solve [auto | in_subst_lfv_rec_case].
+  - simpl.
+    intros x y e1 xneq yin.
+    destruct yin as [yeq | fls]; try contradiction.
+    destruct(eq_letvar letvar5 x).
+    + rewrite e in yeq; contradiction.
+    + simpl; left; assumption.
+  - simpl.
+    intros x y e1 xne yin.
+    repeat
+      match goal with
+      | [ H : forall (x y : letvar) (e1 : exp), _ |- _ ] =>
+        specialize H with x y e1
+      end.
+    repeat
+      match goal with
+      | [ H : ?P -> _, H' : ?P |- _ ] =>
+        specialize (H H')
+      end.
+      destruct(eq_letvar letvar5 x).
+      + rewrite e.
+        rewrite e in yin.
+        try apply in_or_app;
+          apply in_app_or in yin;
+          destruct yin as [yin | yin].
+        * left; apply IHe2_1; assumption.
+        * right; assumption.
+      + try apply in_or_app;
+          apply in_app_or in yin.
+        destruct yin as [yin | yin].
+        * left; apply IHe2_1; assumption.
+        * right. apply in_list_minus.
+          apply in_list_minus in yin.
+          destruct yin.
+          constructor; try apply IHe2_2; assumption.
+Qed.
 
 Ltac type_exp_no_lfv_rec_case :=
   simpl;
@@ -410,18 +397,46 @@ Proof.
     simpl.
     rewrite IHte1.
     simpl.
-    intros e in_e_let.
+    intros x in_e_let.
     rewrite in_list_minus in in_e_let.
     destruct in_e_let.
-    
-    
+    simpl in H0.
+    pose proof in_nil as inn.
+    specialize inn with (A := letvar).
+    rewrite <- IHte2 in inn.
+    destruct (inn x).
+    apply in_subst_lfv; auto.
+Qed.
 
-type_exp_no_lfv_rec_case.
-  -type_exp_no_lfv_rec_case.
-  -type_exp_no_lfv_rec_case.
-  -type_exp_no_lfv_rec_case.
-  all: type_exp_no_lfv_rec_case.
-  simpl in IHte2.
+Lemma letsubst_fv_exp : forall x y e1 e2,
+      In y (fv_exp (letsubst_exp e1 x e2)) ->
+      In y (fv_exp e1) \/ In y (fv_exp e2).
+Proof.
+  intros x y e1 e2 iny.
+  induction e2.
+  all:
+    try solve
+        [ auto
+        | simpl;
+          simpl in iny;
+          repeat
+            (apply in_app_or in iny;
+             destruct iny as [iny | iny];
+             firstorder)].
+  - simpl in iny.
+    destruct (eq_letvar letvar5 x); auto.
+  - simpl.
+    simpl in iny.
+    apply in_app_or in iny;
+      destruct iny as [iny | iny];
+      firstorder.
+    destruct (eq_letvar letvar5 x).
+    + right; apply in_or_app; right; assumption.
+    + specialize (IHe2_2 iny).
+      destruct IHe2_2.
+      * left; assumption.
+      * right; apply in_or_app; right; assumption.
+Qed.
 
 Ltac var_in_fvs :=
   try apply in_or_app;
@@ -429,6 +444,7 @@ Ltac var_in_fvs :=
 
 Ltac strengthen_rec_case C :=
   apply C;
+  try assumption;
   progress repeat match goal with
   | [ H1 : ?P1, H2 : ~ In ?x _, IH : ?P1 -> ~ In ?x _ -> ?P2 |- ?P2 ] =>
     apply IH; first [apply H1 | intro x_in; elim H2; simpl; var_in_fvs]
@@ -484,22 +500,30 @@ Proof.
   - strengthen_rec_case (t_lop g e1 lop5 e2 sz).
   - strengthen_rec_case (t_uop g uop5 e1).
   - strengthen_rec_case (t_cast g cast5 sz e nat5).
-  -
-  apply t_let.
-  progress repeat match goal with
-  | [ H1 : ?P1, H2 : ~ In ?x _, IH : ?P1 -> ~ In ?x _ -> ?P2 |- ?P2 ] =>
-    apply IH; first [apply H1 | intro x_in; elim H2; simpl]
-  end.
-  try apply in_or_app.
-  left; assumption.
-  progress repeat match goal with
-  | [ H1 : ?P1, H2 : ~ In ?x _, IH : ?P1 -> ~ In ?x _ -> ?P2 |- ?P2 ] =>
-    apply IH; first [apply H1 | intro x_in; elim H2; simpl]
-  end.
-  
-  try apply in_or_app.
-  right.
-
+  -  apply t_let.
+     progress repeat match goal with
+                     | [ H1 : ?P1, H2 : ~ In ?x _, IH : ?P1 -> ~ In ?x _ -> ?P2 |- ?P2 ] =>
+                       apply IH; first [apply H1 | intro x_in; elim H2; simpl]
+                     end.
+     try apply in_or_app.
+     left; assumption.
+     progress repeat match goal with
+                     | [ H1 : ?P1, H2 : ~ In ?x _, IH : ?P1 -> ~ In ?x _ -> ?P2 |- ?P2 ] =>
+                       apply IH; first [apply H1 | intro x_in; elim H2; simpl]
+                     end.
+     try apply in_or_app.
+     apply (letsubst_fv_exp (letvar_var id5 t) x).
+     assumption.
+  - apply t_unknown.
+    inversion H.
+    + rewrite Heqg' in H0; inversion H0.
+    + rewrite Heqg' in H2.
+      inversion H2.
+      rewrite H5 in H1; assumption.
+  - strengthen_rec_case t_ite.
+  - strengthen_rec_case (t_extract g sz1 sz2 e sz).
+  - strengthen_rec_case  t_concat.
+Qed.
 
 Ltac exp_exchange_simple_base G :=
   match goal with
@@ -511,7 +535,7 @@ Ltac exp_exchange_simple_base G :=
           | apply tg_cons; assumption]
   end.
 
-
+(*
 Lemma exp_exchange : forall id1 id2 t1 t2 g e t,
     id1 <> id2 ->
     ~ In id1 (map var_id g) ->
@@ -522,15 +546,24 @@ Proof.
   intros id1 id2 t1 t2 g e t idneq id1_nin id2_nin te.
   remember (var_var id1 t1 :: var_var id2 t2 :: g) as G12.
   induction te.
-  - apply t_var.
-   (* rewrite HeqG in H. *)
+  - rewrite HeqG12 in H.
+    simpl in H.
+    apply t_var.
     + simpl.
-      inversion H0.
-      * right; left; assumption.
-      * inversion H1.
-        -- left; assumption.
-        -- right; right; assumption.
-    + exp_exchange_simple_base (var_var id1 t1 :: var_var id2 t2 :: g).
+      firstorder.
+    + inversion H0 as [| G' id1' t1' notin_id1' G'_wf];
+        rewrite HeqG12 in H1; inversion H1.
+      rewrite H3 in notin_id1'.
+      inversion G'_wf as [| g' id2' t2' notin_id2' g'_wf].
+      repeat (apply tg_cons;
+              try first [intro notin_id2; inversion notin_id2; contradiction
+                        | try apply tg_cons; assumption]).
+      rewrite H5 in G'_wf.
+      inversion G'_wf.
+      assumption.
+      
+
+exp_exchange_simple_base (var_var id1 t1 :: var_var id2 t2 :: g).
   - apply t_int.
     exp_exchange_simple_base (var_var id1 t1 :: var_var id2 t2 :: g).
   - apply (t_load _ e1 e2 ed sz nat5); auto.
@@ -583,62 +616,26 @@ Proof.
   - apply t_aop; auto.
   - apply t_aop; auto.
   -
+*)
 
-
-Ltac var_in_fvs :=
-  try apply in_or_app;
-  first [ assumption | left; assumption | right; assumption | right; var_in_fvs].
-
-Ltac strengthen_rec_case C :=
-  apply C;
-  progress repeat match goal with
-  | [ H1 : ?P1, H2 : ~ In ?x _, IH : ?P1 -> ~ In ?x _ -> ?P2 |- ?P2 ] =>
-    apply IH; first [apply H1 | intro x_in; elim H2; simpl; var_in_fvs]
+Ltac preservation_rec_case C :=
+  match goal with
+  | [ IH : ?A -> forall t : type, ?P t -> ?Q t,
+        H : ?P ?t',
+        td : ?A |- _ ] =>
+    specialize (IH td) with t';
+    apply C;
+    try apply IH; assumption
   end.
 
-Lemma exp_strengthening : forall g e t x,
-    type_exp (cons x g) e t -> ~ In x (vars_in_exp e) -> type_exp g e t.
-Proof.
-  intros g e t x te n_in_fv.
-  fold gamma in g.
-  remember (x :: g) as g'.
-  induction te.
-  - rewrite Heqg' in H.
-    rewrite Heqg' in H0.
-    simpl in n_in_fv.
-    inversion H0.
-    inversion H.
-    + symmetry in H5.
-      elim n_in_fv.
-      left; assumption.
-    + apply t_var.
-      apply H5.
-      apply H4.
-  - rewrite Heqg' in H.
-    inversion H.
-    exact (t_int g num5 sz H3).
-  - strengthen_rec_case (t_load g e1 e2 ed sz nat5).
-  - strengthen_rec_case (t_store g e1 e2 ed sz e3).
-  - strengthen_rec_case (t_aop g e1 aop5 e2).
-  - strengthen_rec_case (t_lop g e1 lop5 e2 sz).
-  - strengthen_rec_case (t_uop g uop5 e1).
-  - strengthen_rec_case (t_cast g cast5 sz e nat5).
-  - 
-  apply (t_let g id5 t e1 e2).
-  progress repeat match goal with
-  | [ H1 : ?P1, H2 : ~ In ?x _, IH : ?P1 -> ~ In ?x _ -> ?P2 |- ?P2 ] =>
-    apply IH; first [apply H1 | intro x_in; elim H2; simpl]
+Ltac preservation_base_case C :=
+ match goal with
+  | [ H : type_exp ?d _ _ |- type_exp ?d _ _] =>
+      apply C;
+    apply type_exp_typ_gamma in H;
+    assumption
   end.
-  try apply in_or_app.
-  left; assumption.
-  
 
-Lemma exp_weakening : forall g e t v,
-    type_exp g e t -> typ_gamma (cons v g) -> type_exp (cons v g) e t.
-Proof.
-  intros g e t v te tg.
-  induction te.
-  - inversion tg.
 
 Lemma expr_preservation : forall d e e' t,
     type_delta d ->
@@ -647,12 +644,33 @@ Lemma expr_preservation : forall d e e' t,
     type_exp (map fst d) e' t.
 Proof.
   intros d e e' t td te es.
-  induction es.
-  
+  generalize dependent t.
+  induction es; try (intros t0 te; inversion te).
+  - pose proof in_delta_types as v_types.
+    specialize v_types with id5 t0 v delta5.
+    rewrite <- H1 in H0.
+    rewrite H5 in H0.
+    specialize (v_types td H0).
+    rewrite <- H3.
+    rewrite <- (app_nil_r G).
+    rewrite <- (app_nil_l (G ++ nil)).
+    apply (exp_weakening nil G nil).
+    + simpl; auto.
+    + simpl; rewrite app_nil_r; rewrite H3; assumption.
+  - rewrite H4 in H; contradiction.
+  - preservation_rec_case (t_load (map fst delta5) e1 e2' ed sz nat5).
+  - preservation_rec_case (t_load (map fst delta5) e1' v2 ed sz nat5).
+  - preservation_base_case t_int.
+  - preservation_base_case t_unknown.
+  - 
 
 
 
-
+  - strengthen_rec_case (t_store g e1 e2 ed sz e3).
+  - strengthen_rec_case (t_aop g e1 aop5 e2).
+  - strengthen_rec_case (t_lop g e1 lop5 e2 sz).
+  - strengthen_rec_case (t_uop g uop5 e1).
+  - strengthen_rec_case (t_cast g cast5 sz e nat5). apply t_load.
 
   Lemma wf_all_val : forall d x v, delta_wf d -> In (x,v) d -> is_val_of_exp v.
   Proof.
