@@ -297,6 +297,7 @@ formula :: formula_ ::=
  | nat1 > nat2              :: M :: nat_gt {{ coq ([[nat1]] > [[nat2]])}}
  | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
+ | nat1 % sz = 0            :: M :: nat_mod_z {{ coq (exists n_, [[nat1]] = n_ * [[sz]]) }}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
      {{ coq ([[e1]] = [[e2]]) }}
@@ -368,6 +369,8 @@ defns typing_exp :: '' ::=
  G |- e1 [e2, ed] : sz :: imm<sz>
 
 
+ sz % 8 = 0
+ sz > 0
  G |- e1 :: mem<nat,sz>
  G |- e2 :: imm<nat>
  G |- e3 :: imm<sz>
@@ -524,25 +527,29 @@ defns reduce_exp :: '' ::=
 
 
  ------------------------------------------------------ :: load_byte
- delta |- (v1 with [w,ed]:8 <- num:8)[w,ed']:8 ~> num:8
+ delta |- (v1 with [w,ed]:sz <- v2)[w,ed']:sz ~> v2
 
- ------------------------------------------------------------------------------ :: load_un_addr
- delta |- (v1 with [unknown[str]:t,ed]:8 <- v2)[v3,ed]:8 ~> unknown[str]:imm<8>
+ --------------------------------------------------------------------------------- :: load_un_addr
+ delta |- (v1 with [unknown[str]:t,ed]:sz <- v2)[v3,ed]:sz ~> unknown[str]:imm<sz>
 
  w1 <> w2
- ---------------------------------------------------------- :: load_rec
- delta |- (v1 with [w1,ed]:8 <- v3)[w2,ed]:8 ~> v1[w2,ed]:8
+ -------------------------------------------------------------- :: load_rec
+ delta |- (v1 with [w1,ed]:sz <- v3)[w2,ed]:sz ~> v1[w2,ed]:sz
 
  ---------------------------------------------------------- :: load_un_mem
  delta |- (unknown[str]:t)[v,ed]:sz ~> unknown[str]:imm<sz>
 
+ sz' > sz
  succ w = w'
- --------------------------------------------------- :: load_word_be
- delta |- v[w,be]:sz ~> v[w,be]:8 @ (v[w', be]:(sz-8))
+ v :=def v1 with [w,ed]:sz <- v2
+ ------------------------------------------------------------- :: load_word_be
+ delta |- v[w,be]:sz' ~> v[w,be]:sz @ (v[w', be]:(sz'-sz))
 
+ sz' > sz
  succ w = w'
- --------------------------------------------------- :: load_word_el
- delta |- v[w,el]:sz ~> v[w',el]:(sz-8) @ (v[w,be]:8)
+ v :=def v1 with [w,ed]:sz <- v2
+ -------------------------------------------------------- :: load_word_el
+ delta |- v[w,el]:sz' ~> v[w',el]:(sz'-sz) @ (v[w,be]:sz)
 
 
 
@@ -567,15 +574,19 @@ defns reduce_exp :: '' ::=
  ------------------------------------------------------------------------- :: store_step_mem
  delta |- e1 with [v2,ed]:sz <- v3 ~> e1' with [v2,ed] : sz <- v3
 
+ sz' > sz
  succ w = w'
- e1 :=def (v with [w,be]:8 <- high:8[val])
- -------------------------------------------------------------------- :: store_word_be
- delta |- v with [w,be]:sz <- val ~> e1 with [w',be]:(sz-8) <- low:(sz-8)[val]
+ v :=def v1 with [w2,ed]:sz <- v2
+ e1 :=def (v with [w,be]:sz <- high:sz[val])
+ ---------------------------------------------------------------------------------- :: store_word_be
+ delta |- v with [w,be]:sz' <- val ~> e1 with [w',be]:(sz'-sz) <- low:(sz'-sz)[val]
 
+ sz' > sz
  succ w = w'
- e1 :=def (v with [w,el]:8 <- low:8[val])
- -------------------------------------------------------------------- :: store_word_el
- delta |- v with [w,el]:sz <- val ~> e1 with [w',el]:(sz-8) <- high:(sz-8)[val]
+ v :=def v1 with [w2,ed]:sz <- v2
+ e1 :=def (v with [w,el]:sz <- low:sz[val])
+ -------------------------------------------------------------------------------- :: store_word_el
+ delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
 
  delta |- e1 ~> e1'
