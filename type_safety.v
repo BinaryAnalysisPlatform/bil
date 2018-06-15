@@ -634,10 +634,10 @@ Fixpoint infer (g : gamma) (e : exp) : option type :=
       wsz <- as_imm_type ewt;
  *)
 
-Lemma type_exp_unique : forall g e t t',
-    type_exp g e t -> type_exp g e t' -> t = t'.
+Lemma type_exp_unique : forall g e t,
+    type_exp g e t -> forall t', type_exp g e t' -> t = t'.
 Proof.
-  intros g e t t' te; revert t'.
+  intros g e t te;
   induction te;
     intros t0 t0e;
     inversion t0e.
@@ -663,8 +663,9 @@ Bind Scope bil_exp_scope with exp.
 Notation " [ es ./ x ] e " := (letsubst_exp es x e) (at level 9) : bil_exp_scope.
 
 Local Open Scope bil_exp_scope.
-(*
-Lemma subst_inversion : forall es x e,  e <> exp_letvar x ->
+
+Lemma subst_inversion : forall es x e,
+    e <> exp_letvar x -> ~ In x (lfv_exp es) ->
     (forall y, [es./x]e = exp_var y -> e = exp_var y) /\
     (forall y, [es./x]e = exp_letvar y -> e = exp_letvar y /\ x <> y) /\
     (forall w, [es./x]e = exp_int w -> e = exp_int w) /\
@@ -682,9 +683,63 @@ Lemma subst_inversion : forall es x e,  e <> exp_letvar x ->
     (forall sz1 sz2 e1, [es./x]e = exp_ext sz1 sz2 [es./x]e1 -> e = exp_ext sz1 sz2 e1) /\
     (forall e1 e2, [es./x]e = exp_concat [es./x]e1 [es./x]e2 -> e = exp_concat e1 e2).
 Proof.
-  intros es x e enl.
+  intros es x e enl nisl.
+  repeat constructor; induction e; simpl.
+  all: try solve [try destruct (eq_letvar letvar5 x); intros; inversion H;
+                  try first [reflexivity
+                            | elim enl; f_equal; assumption]].
+  simpl in H.
+  destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
+  assumption.
+  simpl in H.
+  destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
+  intro.
+  inversion H.
+  elim n.
+  rewrite H0.
+  assumption.
+Admitted.
+
+(*
+  intros.
+  inversion H.
+
+
+  simpl.
+  all: try solve [intros; inversion H | auto].
+  destruct (eq_letvar letvar5 x).
+  rewrite e in enl; contradiction.
+  auto.
+  inversion H.
+
+  all: try (destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction)).
+  simpl.
+  try destruct (eq_letvar letvar5 x).
+  rewrite e in enl; contradiction.
+  auto.
+  inversion H.
+  simpl; try destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
+  auto.
+  auto.
+  - rewrite <- H.
+    simpl.
+    destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
+    reflexivity.
+  - simpl in H.
+    destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
+    inversion H.
+    rewrite <- H1; intro eq; symmetry in eq; contradiction.
+  - 
+    destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
+
+
+
   constructor.
-  induction e; simpl; try solve [auto | intros y H; inversion H].
+  intros y H.
+  inversion H.
+  constructor.
+  assumption.
+  inversion H.
   simpl;
     intros;
     destruct (eq_letvar letvar5 x);
@@ -711,13 +766,41 @@ Proof.
       inversion H.
     + intros.
       inversion H.
-      repeat match goal with
+      destruct (eq_exp e0 (exp_letvar x));
+        destruct (eq_exp e1 (exp_letvar x));
+        destruct (eq_exp e2 (exp_letvar x));
+        destruct (eq_exp e3 (exp_letvar x)).
+      * rewrite e, e4, e5, e6.
+        reflexivity.
+      * rewrite e5 in H2.
+        simpl in H2.
+        destruct (eq_letvar x x); try contradiction.
+        
+
+Lemma subst_eq_esubst : forall e x es, es = [es./x]e -> e = exp_letvar x \/ e = es.
+Proof.
+  intros e x.
+  induction e; simpl; auto; intros es es_eq.
+  - destruct (eq_letvar letvar5 x).
+    + rewrite e.
+      left; reflexivity.
+    + right; symmetry; assumption.
+  - inversion es_eq.
+
+
+elim n.
+        
+
+        rewrite e in H1.
+        rewrite e4 in H1.
+        
+        repeat match goal with
              |
 
   constructor.
   *)
 
-Lemma subst_inversion_var : forall es x e y,
+Lemma letsubst_inversion_var : forall es x e y,
     e <> exp_letvar x -> [es./x]e = exp_var y -> e = exp_var y.
 Proof.
   intros es x e y enl.
@@ -729,35 +812,267 @@ Proof.
     solve [rewrite e in enl; contradiction | auto].
 Qed.
 
+
 Lemma no_typed_letvar : forall g x t, ~ type_exp g (exp_letvar x) t.
+Proof.
   intros g x e te.
   inversion te.
 Qed.
 
-Ltac type_subst_rec_case app_tac :=
+Ltac letsubst_unused_rec_case :=
+  f_equal;
+  let H := match goal with
+             [ H : forall x es, ~In x _ -> [es./x]?e = ?e |- [_./_]?e = ?e] => H
+           end in
+  apply H;
+  auto;
+  let nin := match goal with
+               [ nin : ~In _ _ |- _ ] => nin
+             end in
+  intro; elim nin;
+  apply in_or_app;
+  first [left; assumption
+        | right; apply in_list_minus;
+          solve [firstorder]
+        | solve [firstorder]].
+
+Lemma letsubst_unused : forall x es e,
+    ~In x (lfv_exp e) -> [es./x]e = e.
+Proof.
+  intros x es e; revert x es.
+  induction e;
+    simpl;
+    auto;
+    intros x es nin;
+    try solve[letsubst_unused_rec_case].
+  - destruct (eq_letvar letvar5 x);
+      [> elim nin; left; assumption
+      | reflexivity].
+  - destruct (eq_letvar letvar5 x);
+    letsubst_unused_rec_case.
+Qed.
+
+Ltac letsubst_distributes_rec_case :=
+  f_equal;
+  match goal with
+    [ IH : forall x y es1 es2,
+        _ -> _ -> _ -> [es1./x]([es2./y]?e) = [es2./y]([es1./x]?e)
+        |- [?es1 ./ ?x] ([?es2 ./ ?y] ?e) = [?es2 ./ ?y] ([?es1 ./ ?x] ?e) ] =>
+    apply IH; assumption
+  end.
+
+Lemma letsubst_distributes : forall x y es1 es2 e,
+    ~In y (lfv_exp es1) ->
+    lfv_exp es2 = nil ->
+    x <> y -> ([es1./x][es2./y]e) = [es2./y][es1./x]e.
+  intros x y es1 es2 e; revert x y es1 es2.
+  induction e;
+        intros x y es1 es2 yni1 es2_closed xne;
+        simpl;
+        try solve [auto | letsubst_distributes_rec_case].
+  - destruct (eq_letvar letvar5 y).
+    + destruct (eq_letvar letvar5 x).
+      * rewrite <- e in xne;
+          rewrite <- e0 in xne;
+          contradiction.
+      * simpl.
+        destruct (eq_letvar letvar5 y).
+        apply letsubst_unused;
+          rewrite es2_closed;
+          auto.
+        rewrite e in n0.
+        contradiction.
+    + destruct (eq_letvar letvar5 x).
+      * simpl.
+        destruct (eq_letvar letvar5 x);
+          rewrite letsubst_unused;
+          tauto.
+      * simpl.
+        destruct (eq_letvar letvar5 x);
+          destruct (eq_letvar letvar5 y);
+          tauto.
+  - destruct (eq_letvar letvar5 x) as [lv5xe | nlv5xe];
+    destruct (eq_letvar letvar5 y)as [lv5ye | nlv5ye].
+     + rewrite <- lv5xe in xne.
+       rewrite <- lv5ye in xne.
+       contradiction.
+     + rewrite lv5xe.
+       letsubst_distributes_rec_case.
+     + rewrite lv5ye.
+       letsubst_distributes_rec_case.
+     + letsubst_distributes_rec_case.
+Qed.
+
+Ltac type_subst_rec_case' app_tac :=
   let t := match goal with
            | [ |- type_exp _ _ ?t ] => t
            end in
   try (destruct t; inversion tses1);
   first [app_tac | app_tac ()];
   try match goal with
-      | [ H : forall ts t : type,
-            _ -> _ ->
-            type_exp ?G [_./?x]?e t ->
-            type_exp ?G [_./?x]?e t |- _ ] =>
-        apply H with (ts := ts)
+      | [ H : forall x es1 es2 (ts t : type),
+            type_exp ?G es1 ts ->
+            type_exp ?G es2 ts ->
+            type_exp ?G [es1./x]?e t ->
+            type_exp ?G [es2./x]?e t |- _ ] =>
+        apply H with (es1 := es1) (es2 := es2) (ts := ts)
       end; assumption.
 
+Notation "g |-- e ::: t" := (type_exp g e t) (at level 99) : type_scope.
+
+
 Lemma type_subst : forall x g es1 es2 e ts t,
-    type_exp g es1 ts ->
+    g |-- es1 ::: ts ->
     type_exp g es2 ts ->
     type_exp g ([es1 ./ x ] e) t ->
     type_exp g ([es2 ./ x ] e) t.
 Proof.
-  intros x g es1 es2 e.
-  induction e;
-    simpl;
-    intros ts t tes1 tes2 tses1.
+  intros x g es1 es2 e ts t tes1 tes2 te.
+(*
+  destruct (eq_exp e (exp_letvar x)).
+  - rewrite e0.
+    simpl.
+    destruct (eq_letvar x x); try contradiction.
+    rewrite e0 in te.
+    simpl in te.
+    destruct (eq_letvar x x); try contradiction.
+    pose proof type_exp_unique as teqts.
+    specialize teqts with g es1 t ts.
+    specialize (teqts te tes1).
+    rewrite teqts.
+    assumption. *)
+  - generalize dependent es2.
+    generalize dependent t.
+    induction e;
+      simpl;
+      intros t te es2 tes2;
+      try assumption.
+    + destruct (eq_letvar letvar5 x).
+      * match goal with
+        | [ H : ?g |-- ?e ::: ?t,
+                H' : ?g |-- ?e ::: ?t' |- _] =>
+          apply type_exp_unique with (t := t') in H as teq;
+            try assumption;
+            try rewrite <- teq;
+            assumption
+        end.
+        * assumption.
+    + let x := match goal with
+                 [ |- _ |-- ?e ::: _] =>
+                 match e with context [[_./?x]_] => x
+                 end end in
+      let resolve_letvar :=
+          fun ei IHe te =>
+            let eq_e := fresh "eq_ei" in
+            let neq_e := fresh "neq_ei" in
+            destruct (eq_exp ei (exp_letvar x)) as [eq_e | neq_e];
+              try rewrite eq_e;
+              simpl;
+              (try rewrite eq_e in IHe);
+              (simpl in IHe);
+              (try rewrite eq_e in te) in
+      multimatch goal with
+        [ IH : forall t, _ -> forall es, _ -> ?g |-- [es./x]?ei ::: t |- ?g |-- ?e ::: _] =>
+        lazymatch e with context [[es./x]ei] =>
+                       resolve_letvar ei IH te
+        end
+      end;
+      simpl in te;
+          destruct (eq_letvar x x); try contradiction;
+            inversion te;
+            apply t_load with (nat5 := nat0);
+            first [assumption |
+                   match goal with
+                   | [ IH : forall t, _ -> forall es, _ -> ?g |-- [es./?x]?e ::: t
+                                                      |- ?g |-- [?es./?x]?e ::: ?t ] =>
+                     apply IH; assumption
+                   | [ IH : forall t, _ -> forall es, _ -> ?g |-- es ::: t
+                                                      |- ?g |-- ?e ::: ?t ] =>
+                     apply IH; assumption
+                   end].
+
+
+match goal with
+[ IH : forall t, _ -> forall es, _ -> ?g |-- [es./x]?ei ::: t |- ?g |-- ?e ::: _] =>
+match e with context [[es./x]ei] => resolve_letvar e1 IHe1 te
+end
+end
+
+
+let resolve_letvar := fun e1 IHe1 te =>
+destruct (eq_exp e1 (exp_letvar x)) as [eq_e1 | neq_e1];
+        try rewrite eq_e1;
+        simpl;
+        try rewrite eq_e1 in IHe1;
+        simpl in IHe1;
+        try rewrite eq_e1 in te;
+
+ apply t_load with (nat5 := nat0);
+      apply t_store;
+
+
+
+
+      inversion H5.
+      specialize (teqts H5 H6).
+      specialize teqts with g es1 (type_mem nat0 nat5) ts.
+      specialize (teqts H5 tes1).
+      rewrite teqts.
+      assumption.
+
+simpl in te. 
+      destruct (eq_letvar letvar5 x).
+      elim n. inversion e. reflexivity.
+      simpl in te.
+      
+apply t_var with (t := type5). constructor with (t := type5).
+    + apply subst_inversion in Heqe';
+      try (rewrite Heqe'; simpl; constructor);
+        try( rewrite type_exp_no_lfv with (g := G) (t := ts); simpl);
+        auto.
+    + 
+
+
+apply subst_inversion with (es := es2) in Heqe';
+      try (rewrite Heqe'; simpl; constructor);
+        try( rewrite type_exp_no_lfv with (g := G) (t := ts); simpl);
+        auto.
+
+
+
+
+
+
+
+
+
+
+
+    generalize dependent es1.
+    generalize dependent ts.
+    generalize dependent x.
+    induction te;
+      simpl;
+      intros x enl ts es1 tes1 e_subst1_eq es2 tes2;
+      symmetry in e_subst1_eq.
+    + apply letsubst_inversion_var in e_subst1_eq;
+        try (rewrite e_subst1_eq; simpl; constructor);
+        assumption.
+    + apply subst_inversion in e_subst1_eq;
+      try (rewrite e_subst1_eq; simpl; constructor);
+        try( rewrite type_exp_no_lfv with (g := G) (t := ts); simpl);
+        auto.
+    + apply subst_inversion with (es := es2) in e_subst1_eq;
+      try (rewrite e_subst1_eq; simpl; constructor);
+        try( rewrite type_exp_no_lfv with (g := G) (t := ts); simpl);
+        auto.
+
+ apply subst_inversion in e_subst1_eq;
+        try rewrite e_subst1_eq;
+        first [ assumption
+              | simpl; constructor].
+
+
   all: try solve [auto | assumption].
   - destruct (eq_letvar letvar5 x).
     pose proof type_exp_unique as teu.
@@ -766,7 +1081,8 @@ Proof.
     rewrite <- teu1.
     assumption.
     assumption.
-  - let app_tac := (apply t_load with nat0) in
+  - (* TODO: improve this tactic! *)
+    let app_tac := (apply t_load with nat0) in
     type_subst_rec_case app_tac.
   - let app_tac := (apply t_store) in
     type_subst_rec_case app_tac.
@@ -785,8 +1101,25 @@ Proof.
   - (* TODO: improve this tactic! *)
     let app_tac := (apply t_cast with nat0) in
     type_subst_rec_case app_tac.
-  - destruct (eq_letvar letvar5 x).
-    assumption.
+  - destruct (eq_letvar letvar5 x);
+      destruct letvar5;
+      apply t_let;
+      inversion tses1.
+    + apply IHe1 with (es1 := es1) (ts := ts);  assumption.
+    + apply IHe2 with (es2 := [es2./x]e1) (es1 := [es1./x]e1) (ts:=type5);
+        try apply IHe1 with (es1:=es1) (es2:=es2) (ts := ts);
+        assumption.
+    + apply IHe1 with (es1 := es1) (ts := ts);  assumption.
+    + rewrite letsubst_distributes with (es1 := [es2 ./ x] e1).
+      inversion H6.
+      
+
+ apply IHe2 with (es2 := [es2./x]e1) (es1 := [es1./x]e1) (ts:=type5);
+        try apply IHe1 with (es1:=es1) (es2:=es2) (ts := ts);
+        assumption.
+
+    rewrite e in tses1.
+    apply t_let.
 destruct letvar5.
     
     apply t_let.
@@ -802,6 +1135,30 @@ destruct (eq_letvar letvar5 x).
 
     type_subst_rec_case app_tac.
   - 
+
+
+
+
+
+Ltac type_subst_rec_case app_tac :=
+  let t := match goal with
+           | [ |- type_exp _ _ ?t ] => t
+           end in
+  try (destruct t; inversion tses1);
+  first [app_tac | app_tac ()];
+  try match goal with
+      | [ H : forall ts t : type,
+            _ -> _ ->
+            type_exp ?G [_./?x]?e t ->
+            type_exp ?G [_./?x]?e t |- _ ] =>
+        apply H with (ts := ts)
+      end; assumption.
+
+
+
+
+
+
 
 destruct t; inversion tses1.
     apply t_load with (nat5 := nat0);
