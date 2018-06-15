@@ -17,6 +17,8 @@ Definition list_mem := in_dec.
 Arguments list_mem {_}.
 Hint Unfold list_mem.
 
+Hint Resolve eq_word : ott_coq_equality.
+
 }}
 
 embed {{ coq-lib list_mem }}
@@ -61,7 +63,7 @@ grammar
    {{ com -- if $e$ is true then eval $seq_1$ else $seq_2$ }}
 
 
- exp,e :: exp_ ::=
+ exp,e :: exp_ ::= {{ coq-equality }}
    | ( exp )                                    :: S    :: paren
    {{coq ([[exp]])}}
    | var                                        ::      :: var
@@ -193,11 +195,11 @@ grammar
         {{ coq (ext_signed [[word]] [[hi]] [[lo]]) }}
 
 
- bop :: binop_ ::=
+ bop :: binop_ ::= {{ coq-equality }}
    | aop                                      ::      :: arith  {{ com -- arithmetic operators}}
    | lop                                      ::      :: logical  {{ com -- logical operators}}
 
- aop :: arithop_ ::=
+ aop :: arithop_ ::= {{ coq-equality }}
    | +                                          ::      :: plus  {{ com -- plus}}
    | -                                          ::      :: minus {{ com -- minus}}
    | *                                          ::      :: times {{ com -- times}}
@@ -217,7 +219,7 @@ grammar
    | '~>>'                                      ::      :: arshift
         {{ com -- arithmetic shift right}}
 
- lop :: logicop_ ::=
+ lop :: logicop_ ::= {{ coq-equality }}
    | =                                          ::      :: eq  {{ com -- equality }}
    | <>                                         ::      :: neq {{ com -- non-equality }}
    | <                                          ::      :: lt  {{ com -- less than }}
@@ -228,7 +230,7 @@ grammar
    | '<=$'                                      ::      :: sle
         {{ tex \stackrel{signed} \leq }} {{ com -- signed less than or equal }}
 
- uop :: unop_ ::=
+ uop :: unop_ ::= {{ coq-equality }}
    | -                                          ::      :: neg {{ com -- unary negation}}
    | ~                                          ::      :: not {{ com -- bitwise complement}}
 
@@ -246,11 +248,11 @@ grammar
    | ( nat )                                    :: M    :: nat_paren
    {{ coq [[nat]]}}
 
- endian,ed :: endian_ ::=
+ endian,ed :: endian_ ::= {{ coq-equality }}
    | el                                         ::      :: little {{ com -- little endian }}
    | be                                         ::      :: big    {{ com -- big endian }}
 
- cast :: cast_ ::=
+ cast :: cast_ ::= {{ coq-equality }}
    | low                                        ::      :: low {{ com -- extract lower bits }}
    | high                                       ::      :: high {{ com -- extract high bits}}
    | signed                                     ::      :: signed

@@ -4,9 +4,12 @@ Require Import List.
 
 Require Import bbv.Word.
 
+Require Import Eqdep_dec.
+
 Definition sized_word : Set := {sz : nat & (word sz)}.
 
 Definition bbv := word.
+
 
 Definition sized {sz} w : sized_word := existT _ sz w.
 
@@ -175,3 +178,63 @@ Definition ext (w : sized_word) (hi lo : nat) : sized_word :=
 Definition ext_signed (w : sized_word) (hi lo : nat) : sized_word :=
   let (sz, w') := w in
   sized (ext'_signed w' hi lo).
+
+
+Definition sized_as_size : forall sz sz' (w1 : word sz) (eq : sz' = sz),
+    sized w1 = sized (as_size w1 eq).
+intros sz sz' w1 eq.
+unfold sized.
+rewrite eq.
+simpl.
+reflexivity.
+Qed.
+
+Lemma exist_inj : forall A R (sz : A) (w w': R sz),
+    (forall x y : A, {x = y} + {x <> y}) ->
+    (forall a (w w' : R a), {w = w'} + {w <> w'}) ->
+    w = w' <-> existT R sz w = existT R sz w'.
+Proof.
+  intros A R sz w w' dec_a dec.
+  split.
+  - intro eq.
+    rewrite eq.
+    reflexivity.
+  - intro eq.
+    apply Eqdep_dec.inj_pair2_eq_dec;
+      assumption.
+Qed.
+
+Definition eq_word (w1 w2 : sized_word) : {w1 = w2} + {w1 <> w2}.
+  destruct w1.
+  destruct w2.
+  destruct (eq_nat_decide x x0).
+  - apply eq_nat_eq in e.
+    symmetry in e.
+    rewrite (sized_as_size x x0) with (eq0 := e).
+    unfold sized.
+    destruct (weq (as_size w e) w0).
+    + left.
+      f_equal.
+      assumption.
+    + right.
+      intro exeq.
+      apply exist_inj in exeq.
+      contradiction.
+      intros x1 y.
+      destruct (eq_nat_decide x1 y).
+      apply eq_nat_eq in e0.
+      left; assumption.
+      right.
+      intro xeqy.
+      elim n0.
+      apply eq_eq_nat.
+      assumption.
+      apply weq.
+  - right.
+      intro exeq.
+      elim n.
+      apply eq_eq_nat.
+      apply projT1_eq in exeq.
+      simpl in exeq.
+      assumption.
+Defined.
