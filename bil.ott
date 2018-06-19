@@ -72,6 +72,8 @@ grammar
    {{ com -- a let-bound variable }}
    | word                                       ::      :: int
    {{ com -- an immediate value }}
+   | e [ w <- v' ]                              ::      :: mem
+   {{ com -- a memory value }}
    | e1 [ e2 , endian ] : nat                   ::      :: load
    {{ com -- load a value from address $e_2$ at storage $e_1$}}
    | e1 with [ e2 , endian ] : nat <- e3        ::      :: store
@@ -107,7 +109,7 @@ grammar
 
  val,v :: val_ ::=
    | word                                      ::      :: imm
-   | v1 with [ v2 , endian ] : nat <- v3       ::      :: mem
+   | v [ w <- v' ]                             ::      :: mem
    | unknown [ string ] : type                 ::      :: bot
 
  word,w :: word_ ::= {{coq sized_word}}
@@ -361,23 +363,36 @@ defns typing_exp :: '' ::=
  ----------------- :: var
  G |- id:t :: t
 
+ sz > 0
  G is ok
  ----------------- :: int
  G |- num:sz :: imm<sz>
 
+
+ sz > 0
+ nat > 0
+ G |- e :: mem<nat,sz>
+ G |- w :: imm<nat>
+ G |- w' :: imm<sz>
+ ---------------------------------------------------------- :: mem
+ G |- e[w <- w'] :: mem<nat,sz>
+
+
+ sz' % sz = 0
+ sz' > 0
  G |- e1 :: mem<nat,sz>
  G |- e2 :: imm<nat>
  -------------------------- :: load
- G |- e1 [e2, ed] : sz :: imm<sz>
+ G |- e1 [e2, ed] : sz' :: imm<sz'>
 
 
- sz % 8 = 0
- sz > 0
+ sz' % sz = 0
+ sz' > 0
  G |- e1 :: mem<nat,sz>
  G |- e2 :: imm<nat>
- G |- e3 :: imm<sz>
+ G |- e3 :: imm<sz'>
  --------------------------------------------- :: store
- G |- e1 with [e2, ed]:sz <- e3 :: mem<nat,sz>
+ G |- e1 with [e2, ed]:sz' <- e3 :: mem<nat,sz>
 
 
  G |- e1 :: imm<sz>
@@ -527,12 +542,12 @@ defns reduce_exp :: '' ::=
  ------------------------------------- :: load_step_mem
  delta |- e1[v2,ed]:sz ~> e1'[v2,ed]:sz
 
-
  ------------------------------------------------------ :: load_byte
- delta |- (v1 with [w,ed]:sz <- v2)[w,ed']:sz ~> v2
+ delta |- v[num : sz <- w'][num : sz,ed']:sz ~> w'
 
- --------------------------------------------------------------------------------- :: load_un_addr
- delta |- (v1 with [unknown[str]:t,ed]:sz <- v2)[v3,ed]:sz ~> unknown[str]:imm<sz>
+ w <> num : sz
+ ----------------------------------------------------------- :: load_byte_from_next
+ delta |- v[w <- w'][num:sz,ed']:sz ~> v[num : sz,ed']:sz
 
  w1 <> w2
  -------------------------------------------------------------- :: load_rec
@@ -590,6 +605,15 @@ defns reduce_exp :: '' ::=
  -------------------------------------------------------------------------------- :: store_word_el
  delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
+ -------------------------------------------------------------- :: store_val
+ delta |- v with [num:sz,ed] : sz <- w' ~> v[num:sz <- w']
+
+ --------------------------------------------------------------------------------- :: store_un
+ delta |- v with [num:sz,ed] : sz <- unknown[str]:t ~> v[num:sz <- unknown[str]:t]
+
+ v :=def v'[num:sz <- v1]
+ --------------------------------------------------------------------------------- :: store_un_addr
+ delta |- v with [unknown[str]:imm<nat>,ed] : sz <- v2 ~> unknown[str]:mem<nat,sz'>
 
  delta |- e1 ~> e1'
  --------------------------------------------------------- :: let_step
