@@ -176,12 +176,14 @@ Proof.
       * left; assumption.
       * right; apply in_or_app; right; assumption.
   - intros g HeqG.
-    rewrite HeqG in H.
     apply t_int.
+    auto.
   - intros g HeqG tGw.
-    apply (t_load _ _ _ _ sz nat5); auto.
+    apply t_mem; auto.
   - intros g HeqG tGw.
-    apply (t_store _ e1 e2 ed sz e3); auto.
+    apply (t_load _ _ _ _ sz' sz nat5); auto.
+  - intros g HeqG tGw.
+    apply (t_store _ e1 e2 ed sz' e3); auto.
   - intros g HeqG tGw.
     apply t_aop; auto.
   - intros g HeqG tGw.
@@ -446,7 +448,12 @@ Ltac var_in_fvs :=
 
 Ltac strengthen_rec_case C :=
   apply C;
-  try assumption;
+  repeat match goal with
+  | [ HG : ?G = _, Ht : typ_gamma ?G |- _ ] =>
+    rewrite HG in Ht;
+    inversion Ht
+         end;
+  try auto;
   progress repeat match goal with
   | [ H1 : ?P1, H2 : ~ In ?x _, IH : ?P1 -> ~ In ?x _ -> ?P2 |- ?P2 ] =>
     apply IH; first [apply H1 | intro x_in; elim H2; simpl; var_in_fvs]
@@ -493,11 +500,12 @@ Proof.
     + apply t_var.
       apply H5.
       apply H4.
-  - rewrite Heqg' in H.
-    inversion H.
-    exact (t_int g num5 sz H3).
-  - strengthen_rec_case (t_load g e1 e2 ed sz nat5).
-  - strengthen_rec_case (t_store g e1 e2 ed sz e3).
+  - rewrite Heqg' in H0.
+    inversion H0.
+    apply t_int; assumption.
+  - strengthen_rec_case t_mem.
+  - strengthen_rec_case (t_load g e1 e2 ed  sz' sz nat5).
+  - strengthen_rec_case (t_store g e1 e2 ed sz' e3).
   - strengthen_rec_case (t_aop g e1 aop5 e2).
   - strengthen_rec_case (t_lop g e1 lop5 e2 sz).
   - strengthen_rec_case (t_uop g uop5 e1).
@@ -660,7 +668,9 @@ Qed.
 (* TODO: put in bil.ott if works well *)
 Bind Scope bil_exp_scope with exp.
 
-Notation " [ es ./ x ] e " := (letsubst_exp es x e) (at level 9) : bil_exp_scope.
+Notation "[ es ./ x ] e" := (letsubst_exp es x e) (at level 9) : bil_exp_scope.
+
+Notation "[m: e , w <- w' ]" := (exp_mem e w w') (at level 79) : bil_exp_scope.
 
 Local Open Scope bil_exp_scope.
 
@@ -669,11 +679,11 @@ Lemma subst_inversion : forall es x e,
     (forall y, [es./x]e = exp_var y -> e = exp_var y) /\
     (forall y, [es./x]e = exp_letvar y -> e = exp_letvar y /\ x <> y) /\
     (forall w, [es./x]e = exp_int w -> e = exp_int w) /\
-    (forall e1 e2 ed sz, [es./x]e = exp_load [es./x]e1 [es./x]e2 ed sz ->
+    (forall e1 e2 ed sz, [es./x]e = exp_load ([es./x]e1) ([es./x]e2) ed sz ->
                          e = exp_load e1 e2 ed sz) /\
-    (forall e1 e2 ed sz e3, [es./x]e = exp_store [es./x]e1 [es./x]e2 ed sz [es./x]e3 ->
+    (forall e1 e2 ed sz e3, [es./x]e = exp_store ([es./x]e1) ([es./x]e2) ed sz ([es./x]e3) ->
                             e = exp_store e1 e2 ed sz e3) /\
-    (forall e1 op e2, [es./x]e = exp_binop [es./x]e1 op [es./x]e2 -> e = exp_binop e1 op e2) /\
+    (forall e1 op e2, [es./x]e = exp_binop ([es./x]e1) op ([es./x]e2) -> e = exp_binop e1 op e2) /\
     (forall op e1, [es./x]e = exp_unop op [es./x]e1 -> e = exp_unop op e1) /\
     (forall c sz e1, [es./x]e = exp_cast c sz [es./x]e1 -> e = exp_cast c sz e1) /\
     (forall e1 e2, [es./x]e = exp_let x [es./x]e1 e2 -> e = exp_let x e1 e2 ) /\
@@ -920,14 +930,70 @@ Ltac type_subst_rec_case' app_tac :=
 
 Notation "g |-- e ::: t" := (type_exp g e t) (at level 99) : type_scope.
 
+Ltac type_subst_rec_case app_tac :=
+  let x := match goal with
+             [ |- _ |-- ?e ::: _] =>
+             match e with context [[_./?x]_] => x
+             end end in
+  let te := match goal with
+              [ te : ?g |-- _ ::: ?t |- ?g |-- _ ::: ?t ] => te
+            end in
+  let resolve_letvar :=
+      fun ei IHe te =>
+        let eq_e := fresh "eq_ei" in
+        let neq_e := fresh "neq_ei" in
+        destruct (eq_exp ei (exp_letvar x)) as [eq_e | neq_e];
+        try rewrite eq_e;
+        simpl;
+        (try rewrite eq_e in IHe);
+        (simpl in IHe);
+        (try rewrite eq_e in te) in
+  multimatch goal with
+    [ IH : forall t es1, _ ->  _ -> forall es, _ -> ?g |-- [es./x]?ei ::: t |- ?g |-- ?e ::: _] =>
+    lazymatch e with context [[es./x]ei] =>
+                     resolve_letvar ei IH te
+    end
+  end;
+  simpl in te;
+  destruct (eq_letvar x x); try contradiction;
+  inversion te;
+  app_tac;
+  repeat match goal with
+         | [H : ?t1 = ?t2 |- _] =>
+           let tty := type of t1 in
+           unify tty type; destruct H
+         end;
+  repeat multimatch goal with
+         | [ TE1 : ?g |-- ?e ::: ?t1, TE2 : ?g |-- ?e ::: ?t2, _ : ?t1 = ?t2 |- _ ] => fail
+         | [ TE1 : ?g |-- ?e ::: ?t1, TE2 : ?g |-- ?e ::: ?t2, _ : ?t2 = ?t1 |- _ ] => fail
+         | [ TE1 : ?g |-- ?e ::: ?t1, TE2 : ?g |-- ?e ::: ?t2 |- _ ] =>
+           let teq := fresh "teq" in
+           pose proof type_exp_unique as teq;
+           specialize teq with (g := g) (t := t1) (t' := t2);
+           specialize (teq e TE1 TE2);
+           clear TE2;
+           destruct teq
+         end;
+  try first [assumption |
+         match goal with
+         | [ IH : forall t es1, _ -> _ -> forall es, _ -> ?g |-- [es./?x]?e ::: t,
+              TES1 : ?g |-- [?es1./?x]?e ::: ?t'
+                                            |- ?g |-- [?es./?x]?e ::: ?t ] =>
+           apply IH with (es1 := es1); assumption
+         | [ IH : forall t es1, _ -> _ -> forall es, _ -> ?g |-- es ::: t,
+              TES1 : ?g |-- [?es1./?x]?e ::: ?t'
+                                            |- ?g |-- ?e ::: ?t ] =>
+           apply IH with (es1 := es1); assumption
+         end].
 
-Lemma type_subst : forall x g es1 es2 e ts t,
+Lemma type_subst : forall id g es1 es2 e ts t,
     g |-- es1 ::: ts ->
     type_exp g es2 ts ->
-    type_exp g ([es1 ./ x ] e) t ->
-    type_exp g ([es2 ./ x ] e) t.
+    type_exp g ([es1 ./ letvar_var id ts ] e) t ->
+    type_exp g ([es2 ./ letvar_var id ts ] e) t.
 Proof.
-  intros x g es1 es2 e ts t tes1 tes2 te.
+  intros id g es1 es2 e ts t tes1 tes2 te.
+  remember (letvar_var id ts) as x.
 (*
   destruct (eq_exp e (exp_letvar x)).
   - rewrite e0.
@@ -942,10 +1008,11 @@ Proof.
     rewrite teqts.
     assumption. *)
   - generalize dependent es2.
+    generalize dependent es1.
     generalize dependent t.
     induction e;
       simpl;
-      intros t te es2 tes2;
+      intros t es1 tes1 te es2 tes2;
       try assumption.
     + destruct (eq_letvar letvar5 x).
       * match goal with
@@ -957,6 +1024,67 @@ Proof.
             assumption
         end.
         * assumption.
+    + let app_tac := (apply t_mem) in
+      type_subst_rec_case app_tac.
+    + let app_tac := (apply t_load with (nat5 := nat0) (sz := sz)) in
+      type_subst_rec_case app_tac.
+    + let app_tac := (apply t_store with (nat5 := nat0) (sz := sz)) in
+      type_subst_rec_case app_tac.
+    + destruct bop5.
+      * let app_tac := (apply t_aop with (aop5 := aop5)) in
+        type_subst_rec_case app_tac.
+      * let app_tac := (apply t_lop with (lop5 := lop5) (sz := sz)) in
+        type_subst_rec_case app_tac.
+    + let app_tac := (apply t_uop) in
+      type_subst_rec_case app_tac.
+    + let app_tac := (apply t_cast with (nat5 := nat0)) in
+      type_subst_rec_case app_tac.
+    + destruct (eq_letvar letvar5 x).
+      *  destruct letvar5.
+        inversion te.
+        destruct H.
+        destruct H1.
+        destruct H4.
+        destruct H0.
+        destruct H2.
+        apply t_let.
+        apply IHe1 with (t := t0) (es1 := es1);
+        rewrite <- e in IHe1;
+        rewrite Heqx in e;
+        inversion e;
+        destruct H1;
+          assumption.
+        destruct x.
+        inversion Heqx.
+        destruct H0, H1.
+        inversion e.
+        destruct H0, H1.
+        apply IHe2 with (es1 := [es1./letvar_var id0 t0]e1);
+          try assumption.
+        apply IHe1 with (es1 := es1);
+          try assumption.
+      * inversion te.
+        destruct H2.
+        apply t_let.
+        apply IHe1 with (es1 := es1);
+          try assumption.
+        apply IHe2 with (es1 := [es1./letvar_var id5 t0]e1).
+    + let app_tac := (apply t_uop) in
+      type_subst_rec_case app_tac.
+    + let app_tac := (apply t_uop) in
+      type_subst_rec_case app_tac.
+    + let app_tac := (apply t_uop) in
+      type_subst_rec_case app_tac.
+    + 
+
+
+
+
+
+
+let app_tac := (apply t_load with (nat5 := nat0)) in
+      type_subst_rec_case app_tac.
+
     + let x := match goal with
                  [ |- _ |-- ?e ::: _] =>
                  match e with context [[_./?x]_] => x
