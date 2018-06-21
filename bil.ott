@@ -339,6 +339,7 @@ subrules
 substitutions
         single exp var :: subst
         single exp letvar :: letsubst
+        multiple exp letvar :: let_multisubst
 
 freevars
         exp var :: fv
