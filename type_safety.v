@@ -1441,6 +1441,33 @@ Proof.
             unify_typing_judgments;
             type_subst_solve_IH.
           destruct_equalities_on type.
+          remember (letvar_var id5 t0) as y.
+          rewrite letsubst_unused.
+          rewrite letsubst_unused in H5.
+          unify_typing_judgments.
+          assumption.
+          rewrite type_exp_no_lfv with (g := g) (t := ts).
+          simpl; auto.
+          auto.
+          rewrite type_exp_no_lfv with (g := g) (t := ts).
+          simpl; auto.
+          auto.
+       -- eapply t_let.
+          destruct_equalities_on letvar;
+            destruct_equalities_on type;
+            unify_typing_judgments;
+            type_subst_solve_IH.
+          destruct_equalities_on type.
+          apply IHe2.
+
+          type_subst_solve_IH.
+          rewrite type_exp_no_lfv with (g := g) (t := ts).
+          simpl; auto.
+          
+          rewrite type_exp_no_lfv with (g := g) (t := ts).
+          simpl; auto.
+          auto.
+
 (* TODO: not true given the non-capture-avoiding substitution!
 Lemma letsubst_distribute2 : forall es1 x es2 y e,
               ~In x (lfv_exp e) -> [[es1./x]es2./y]e = [es1./x][es2./y]e.
