@@ -68,7 +68,7 @@ grammar
    {{coq ([[exp]])}}
    | var                                        ::      :: var
    {{ com -- a variable }}
-   | letvar                                     ::      :: letvar
+   | lid                                        ::      :: letvar
    {{ com -- a let-bound variable }}
    | word                                       ::      :: int
    {{ com -- an immediate value }}
@@ -84,7 +84,7 @@ grammar
    {{ com -- perform an unary operation on $e_1$}}
    | cast : nat [ e ]                           ::      :: cast
    {{ com -- extract or extend bitvector $e$ }}
-   | let letvar = e1 in e2                      ::      :: let (+ bind letvar in e2 +)
+   | let e1 : t in e2                           ::      :: let
    {{ com -- bind $e_1$ to $var$ in expression $e_2$}}
    | unknown [ string ] : type                  ::      :: unk
    {{ com -- unknown or undefined value of a given $type$ }}
@@ -95,14 +95,11 @@ grammar
    | e1 @ e2                                    ::      :: concat
    {{ com -- concatenate two bitvector $e_1$ to $e_2$ }}
    | [ e1 / var ] e2                              :: M :: subst
-   {{ com -- the (capture avoiding) substitution of $e_1$ for $var$ in $e_2$ }}
+   {{ com -- the substitution of $e_1$ for $var$ in $e_2$ }}
    {{ coq (subst_exp [[e1]] [[var]] [[e2]])}}
-   | [ e1 / letvar ] e2                              :: M :: letsubst
-   {{ com -- the (capture avoiding) substitution of $e_1$ for $var$ in $e_2$ }}
-   {{ coq (letsubst_exp [[e1]] [[letvar]] [[e2]])}}
-
- letvar :: letvar_ ::= {{ coq-equality }}
-   | ` id : type                                 ::      :: var
+   | [ e1 / 0 ] e2                              :: M :: letsubst
+   {{ com -- the (capture avoiding) substitution of $e_1$ for index $0$ in $e_2$ }}
+   {{ coq (letsubst [[e1]] [[0]] [[e2]])}}
 
  var :: var_ ::= {{ coq-equality }}
    | id : type                                 ::      :: var
@@ -293,6 +290,14 @@ grammar
    {{ com -- domain of a runtime binding context}}
    {{ coq (map fst [[delta]]) }}
 
+ lgamma {{ tex \Gamma_l }}, Gl {{ tex \Gamma_l }} :: lgamma_ ::= {{ coq (list type) }}
+   | []                                         ::      :: nil
+   {{ com -- empty }}
+   {{ coq nil }}
+   | lgamma , type                              ::      :: cons
+   {{ com -- extend }}
+   {{ coq (cons [[type]] [[lgamma]]) }}
+
 formula :: formula_ ::=
  | judgement                ::   :: judgement
  | ( formula )              :: M :: paren {{ coq ([[formula]]) }}
@@ -338,12 +343,38 @@ subrules
 
 substitutions
         single exp var :: subst
-        single exp letvar :: letsubst
-        multiple exp letvar :: let_multisubst
 
 freevars
         exp var :: fv
-        exp letvar :: lfv
+        exp lid :: lfv
+
+embed
+{{ coq
+
+Bind Scope bil_exp_scope with exp.
+Reserved Notation "[ es ./ i ]" (at level 70, no associativity).
+
+Fixpoint letsubst (es : exp) (i : lid) (e : exp) : exp :=
+  match e with
+  | exp_var v => exp_var v
+  | exp_letvar i' => if Nat.eqb i i' then es else exp_letvar i'
+  | exp_int w => exp_int w
+  (* The second argument to mem is a value and therefore closed *)
+  | exp_mem e w v => exp_mem ([es./i] e) w v
+  | exp_load em ea ed sz => exp_load ([es./i]em) ([es./i]ea) ed sz
+  | exp_store em ea ed sz ev => exp_store ([es./i]em) ([es./i]ea) ed sz ([es./i]ev)
+  | exp_binop e1 bop e2 => exp_binop ([es./i]e1) bop ([es./i]e2)
+  | exp_unop uop e => exp_unop uop ([es./i]e)
+  | exp_cast c sz e => exp_cast c sz ([es./i]e)
+  | exp_let e1 t e2 => exp_let ([es./i]e1) t ([es./S i]e2)
+  | exp_unk s t => exp_unk s t
+  | exp_ite e1 e2 e3 => exp_ite ([es./i]e1) ([es./i]e2) ([es./i]e3)
+  | exp_ext hi lo e => exp_ext hi lo ([es./i]e)
+  | exp_concat e1 e2 => exp_concat ([es./i]e1) ([es./i]e2)
+  end
+where "[ es ./ i ]" := (letsubst es i) : bil_exp_scope.
+
+}}
 
 defns typing_gamma :: '' ::=
  defn G is ok :: :: typ_gamma :: tg_ by
@@ -357,91 +388,91 @@ defns typing_gamma :: '' ::=
  (G, id:t) is ok
 
 defns typing_exp :: '' ::=
- defn G |- exp '::' type :: :: type_exp :: t_ by
+ defn G ; Gl |- exp '::' type :: :: type_exp :: t_ by
 
  id:t isin G
  G is ok
  ----------------- :: var
- G |- id:t :: t
+ G; Gl |- id:t :: t
 
  sz > 0
  G is ok
  ----------------- :: int
- G |- num:sz :: imm<sz>
+ G; Gl |- num:sz :: imm<sz>
 
 
  sz > 0
  nat > 0
- G |- e :: mem<nat,sz>
- G |- w :: imm<nat>
- G |- w' :: imm<sz>
+ G; Gl |- e :: mem<nat,sz>
+ G; Gl |- w :: imm<nat>
+ G; Gl |- w' :: imm<sz>
  ---------------------------------------------------------- :: mem
- G |- e[w <- w'] :: mem<nat,sz>
+ G; Gl |- e[w <- w'] :: mem<nat,sz>
 
 
  sz' % sz = 0
  sz' > 0
- G |- e1 :: mem<nat,sz>
- G |- e2 :: imm<nat>
+ G; Gl |- e1 :: mem<nat,sz>
+ G; Gl |- e2 :: imm<nat>
  -------------------------- :: load
- G |- e1 [e2, ed] : sz' :: imm<sz'>
+ G; Gl |- e1 [e2, ed] : sz' :: imm<sz'>
 
 
  sz' % sz = 0
  sz' > 0
- G |- e1 :: mem<nat,sz>
- G |- e2 :: imm<nat>
- G |- e3 :: imm<sz'>
+ G; Gl |- e1 :: mem<nat,sz>
+ G; Gl |- e2 :: imm<nat>
+ G; Gl |- e3 :: imm<sz'>
  --------------------------------------------- :: store
- G |- e1 with [e2, ed]:sz' <- e3 :: mem<nat,sz>
+ G; Gl |- e1 with [e2, ed]:sz' <- e3 :: mem<nat,sz>
 
 
- G |- e1 :: imm<sz>
- G |- e2 :: imm<sz>
+ G; Gl |- e1 :: imm<sz>
+ G; Gl |- e2 :: imm<sz>
  --------------------------------- :: aop
- G |- e1 aop e2 :: imm<sz>
+ G; Gl |- e1 aop e2 :: imm<sz>
 
- G |- e1 :: imm<sz>
- G |- e2 :: imm<sz>
+ G; Gl |- e1 :: imm<sz>
+ G; Gl |- e2 :: imm<sz>
  --------------------------------- :: lop
- G |- e1 lop e2 :: imm<1>
+ G; Gl |- e1 lop e2 :: imm<1>
 
- G |- e1 :: imm<sz>
+ G; Gl |- e1 :: imm<sz>
  ---------------------------------- :: uop
- G |- uop e1 :: imm<sz>
+ G; Gl |- uop e1 :: imm<sz>
 
 
- G |- e :: imm<nat>
+ G; Gl |- e :: imm<nat>
  --------------------- :: cast
- G |- cast:sz[e] :: imm<sz>
+ G; Gl |- cast:sz[e] :: imm<sz>
 
 
- G |- e1  :: t
- G |- [e1/`id:t] e2  :: t'
+ G; Gl |- e1  :: t
+ G; Gl,t |- e2 :: t'
  -------------------------- :: let
- G |- let `id:t = e1 in e2 :: t'
+ G; Gl |- let e1 : t in e2 :: t'
 
  G is ok
  ------------------------- :: unknown
- G |- unknown[str]:t :: t
+ G; Gl |- unknown[str]:t :: t
 
 
- G |- e1 :: imm<1>
- G |- e2 :: t
- G |- e3 :: t
+ G; Gl |- e1 :: imm<1>
+ G; Gl |- e2 :: t
+ G; Gl |- e3 :: t
  -------------------------- :: ite
- G |- if e1 then e2 else e3 :: t
+ G; Gl |- if e1 then e2 else e3 :: t
 
- G |- e :: imm<sz>
+ G; Gl |- e :: imm<sz>
  sz1 >= sz2
  ---------------------------------- :: extract
- G |- extract:sz1:sz2[e] :: imm<(sz1-sz2)+1>
+ G; Gl |- extract:sz1:sz2[e] :: imm<(sz1-sz2)+1>
 
 
- G |- e1 :: imm<sz1>
- G |- e2 :: imm<sz2>
+ G; Gl |- e1 :: imm<sz1>
+ G; Gl |- e2 :: imm<sz2>
  ---------------------------------- :: concat
- G |- e1 @ e2 :: imm<sz1+sz2>
+ G; Gl |- e1 @ e2 :: imm<sz1+sz2>
 
 defns typing_stmt :: '' ::=
 
@@ -460,13 +491,13 @@ defns typing_stmt :: '' ::=
  defn G |- stmt is ok :: :: type_stmt :: t_ by
 
 
- G |- var :: t
- G |- exp :: t
+ G;[] |- var :: t
+ G;[] |- exp :: t
  --------------------------- :: move
  G |- var := exp is ok
 
 
- G |- exp :: imm<nat>
+ G;[] |- exp :: imm<nat>
  --------------------------- :: jmp
  G |- jmp exp is ok
 
@@ -479,19 +510,19 @@ defns typing_stmt :: '' ::=
  G |- special(str) is ok
 
 
- G |- e :: imm<1>
+ G;[] |- e :: imm<1>
  G |- seq is ok
  ---------------------------- :: while
  G |- while (e) seq is ok
 
 
- G |- e :: imm<1>
+ G;[] |- e :: imm<1>
  G |- seq is ok
  ---------------------------- :: ifthen
  G |- if (e) seq is ok
 
 
- G |- e :: imm<1>
+ G;[] |- e :: imm<1>
  G |- seq1 is ok
  G |- seq2 is ok
  ---------------------------- :: if
@@ -505,7 +536,7 @@ defns typing_delta :: '' ::=
  |- [] is ok
 
  |- delta is ok
- [] |- v :: type
+ [];[] |- v :: type
  ---------------------- :: value
  |- delta [id:type <- v] is ok
 
@@ -618,11 +649,11 @@ defns reduce_exp :: '' ::=
 
  delta |- e1 ~> e1'
  --------------------------------------------------------- :: let_step
- delta |- let letvar = e1 in e2 ~> let letvar = e1' in e2
+ delta |- let e1 : t in e2 ~> let e1' : t in e2
 
 
  ------------------------------------------------- :: let_subst
- delta |- let letvar = v in e ~> [v/letvar]e
+ delta |- let v : t in e ~> [v/0]e
 
 
  delta |- e1 ~> e1'
