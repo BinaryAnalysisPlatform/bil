@@ -70,6 +70,11 @@ grammar
    {{ com -- a variable }}
    | lid                                        ::      :: letvar
    {{ com -- a let-bound variable }}
+   % TODO: break these out into another type for cleaner defs?
+   | 0                                          :: S     :: letvar0
+   {{ coq (exp_letvar O) }}
+   | S lid                                      :: S     :: letvarS
+   {{ coq (exp_letvar (S [[lid]])) }}
    | word                                       ::      :: int
    {{ com -- an immediate value }}
    | e [ w <- v' ]                              ::      :: mem
@@ -394,6 +399,14 @@ defns typing_exp :: '' ::=
  G is ok
  ----------------- :: var
  G; Gl |- id:t :: t
+
+ G is ok
+ ----------------- :: letvarO
+ G; Gl,t |- 0 :: t
+
+ G; Gl |- lid :: t
+ ---------------------- :: letvarS
+ G; Gl,t' |- S lid :: t
 
  sz > 0
  G is ok
