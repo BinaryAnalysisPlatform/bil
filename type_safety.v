@@ -4,10 +4,83 @@ Require Import Omega.
 
 Require Import bil.bil.
 
+
+Fixpoint lift_above n (e : exp) : exp :=
+match e with
+| exp_var var5 => exp_var var5
+| exp_letvar lid => exp_letvar (if lt_dec lid n then lid else (S lid))
+| exp_int word5 => exp_int word5
+| exp_mem e w v => exp_mem (lift_above n e) w v
+| exp_load e1 e2 endian5 nat5 => exp_load (lift_above n e1) (lift_above n e2) endian5 nat5
+| exp_store e1 e2 endian5 nat5 e3 =>
+  exp_store (lift_above n e1) (lift_above n e2) endian5 nat5 (lift_above n e3)
+| exp_binop e1 bop5 e2 => exp_binop (lift_above n e1) bop5 (lift_above n e2)
+| exp_unop uop5 e => exp_unop uop5 (lift_above n e)
+| exp_cast cast5 nat5 e => exp_cast cast5 nat5 (lift_above n e)
+| exp_let e t eb => exp_let (lift_above n e) t (lift_above (S n) eb)
+| exp_unk string5 type5 => exp_unk string5 type5
+| exp_ite e1 e2 e3 => exp_ite (lift_above n e1) (lift_above n e2) (lift_above n e3)
+| exp_ext hi lo e => exp_ext hi lo (lift_above n e)
+| exp_concat e1 e2 => exp_concat (lift_above n e1) (lift_above n e2)
+end.
+
+
+Notation "^ e" := (lift_above 0 e) (at level 69, right associativity) : bil_exp_scope.
+
+Fixpoint lift_above_m m n (e : exp) {struct e} : exp :=
+match e with
+| exp_var var5 => exp_var var5
+| exp_letvar lid => exp_letvar (if lt_dec lid n then lid else (m + lid))
+| exp_int word5 => exp_int word5
+| exp_mem e w v => exp_mem (lift_above_m m n e) w v
+| exp_load e1 e2 endian5 nat5 => exp_load (lift_above_m m n e1) (lift_above_m m n e2) endian5 nat5
+| exp_store e1 e2 endian5 nat5 e3 =>
+  exp_store (lift_above_m m n e1) (lift_above_m m n e2) endian5 nat5 (lift_above_m m n e3)
+| exp_binop e1 bop5 e2 => exp_binop (lift_above_m m n e1) bop5 (lift_above_m m n e2)
+| exp_unop uop5 e => exp_unop uop5 (lift_above_m m n e)
+| exp_cast cast5 nat5 e => exp_cast cast5 nat5 (lift_above_m m n e)
+| exp_let e t eb => exp_let (lift_above_m m n e) t (lift_above_m m (S n) eb)
+| exp_unk string5 type5 => exp_unk string5 type5
+| exp_ite e1 e2 e3 => exp_ite (lift_above_m m n e1) (lift_above_m m n e2) (lift_above_m m n e3)
+| exp_ext hi lo e => exp_ext hi lo (lift_above_m m n e)
+| exp_concat e1 e2 => exp_concat (lift_above_m m n e1) (lift_above_m m n e2)
+end.
+
+Lemma lift_above_above_m : forall m n e,
+    lift_above_m m n (lift_above n e) = lift_above_m (S m) n e.
+Proof.
+  intros m n e; revert n; induction e; intro n; simpl; auto;
+    try (repeat multimatch goal with
+             [ H : forall n, _ = _ |- ?g] => try rewrite H; clear H
+           end; reflexivity).
+  - destruct (lt_dec lid5 n).
+    destruct (lt_dec lid5 n).
+    reflexivity.
+    contradiction.
+    destruct (lt_dec (S lid5) n).
+    elim n0.
+    omega.
+    rewrite <- Nat.add_comm.
+    simpl.
+    rewrite <- Nat.add_comm.
+    reflexivity.
+Qed.
+
+Lemma lift_above_0 : forall n e, lift_above_m 0 n e = e.
+Proof.
+  intros; revert n; induction e; intro n; simpl; auto;
+    try (repeat multimatch goal with
+             [ H : forall n, _ = _ |- ?g] => try rewrite H; clear H
+           end; reflexivity).
+  - destruct (lt_dec lid5 n);reflexivity.
+Qed.
+
+Notation "g ; lg |-- e ::: t" := (type_exp g lg e t) (at level 99) : type_scope.
+
 Lemma in_delta_types : forall id type v d,
     type_delta d ->
     In (var_var id type, v) d ->
-    type_exp nil v type.
+     nil; nil |-- v ::: type.
 Proof.
   intros id type v d td v_in.
   induction td.
@@ -20,84 +93,7 @@ Proof.
     + apply IHtd; assumption.
 Qed.
 
-Lemma in_list_minus : forall {A} (l l' : list A) (e : A) {dec},
-    In e (list_minus dec l l') <-> In e l /\ ~In e l'.
-  intros A l l' e dec.
-  split.
-  intro e_in.
-  induction l.
-  - simpl in e_in; contradiction.
-  - simpl in e_in.
-    simpl.
-    constructor.
-    destruct (list_mem dec a l').
-    + apply IHl in e_in; destruct e_in.
-      constructor; try right; assumption.
-    + destruct e_in.
-      * constructor. try left; assumption.
-      * right; apply IHl; assumption.
-    + unfold list_mem in e_in.
-      destruct (in_dec dec a l').
-      tauto.
-      destruct e_in.
-      * rewrite <- H.
-        assumption.
-      * tauto.
-  - intro conj; destruct conj as [in_l nin_l'].
-    induction l.
-    * tauto.
-    * simpl.
-      unfold list_mem.
-      destruct (in_dec dec a l'); destruct (dec e a).
-      -- rewrite e0 in nin_l'.
-         tauto.
-      -- destruct in_l.
-         ++ symmetry in H; contradiction.
-         ++ apply IHl in H; assumption.
-      -- rewrite e0; simpl; auto.
-      -- right; apply IHl.
-         destruct in_l.
-         ++ symmetry in H; contradiction.
-         ++ assumption.
-(* TODO: clean up proof *)
-Qed.
 
-Lemma in_list_minus2 : forall {A B} (l : list (A * B)) (l' : list A) (a : A) (b : B) {dec},
-    In (a,b) (list_minus2 dec l l') <-> In (a,b) l /\ ~In a l'.
-Proof.
-  intros A B l l' a b dec.
-  split.
-  - intro e_in; induction l;
-      simpl in e_in;
-      try contradiction.
-    destruct a0.
-    simpl.
-    simpl in e_in.
-    destruct (list_mem dec a0 l').
-    apply IHl in e_in;
-    destruct e_in; constructor; auto.
-    destruct e_in.
-    inversion H.
-    rewrite H1 in n.
-    auto.
-    apply IHl in H;
-    destruct H; constructor; auto.
-  - intro in_and_in; destruct in_and_in.
-    induction l;
-      simpl in H; try contradiction.
-    destruct H.
-    destruct a0.
-    rewrite H.
-    simpl.
-    destruct (list_mem dec a l'); try tauto.
-    simpl; auto.
-    destruct a0.
-    simpl.
-    destruct (list_mem dec a0 l'); try tauto.
-    simpl.
-    right.
-    auto.
-Qed.
 
 Definition var_id : var -> id :=
 (fun v : var => match v with
@@ -191,161 +187,284 @@ Lemma fv_impl_exp_v : forall x e, In x (fv_exp e) -> In x (vars_in_exp e).
 Qed.
 *)
 
-Lemma type_exp_typ_gamma : forall g e t, type_exp g e t -> typ_gamma g.
+Lemma type_exp_typ_gamma : forall g lg e t, g; lg |-- e ::: t -> typ_gamma g.
 Proof.
-  intros g e t te.
+  intros g lg e t te.
   induction te; auto.
 Qed.
 
-Lemma exp_weakening : forall g gw g' e t,
-    type_exp (g ++ g') e t -> typ_gamma (g ++ gw ++ g') -> type_exp (g ++ gw ++ g') e t.
+Ltac find_typed t :=
+  multimatch goal with
+  | [ e : t |- _ ] => e
+  end.
+
+Ltac do_for_all_exps tac :=
+  first [ let app_tac := (apply t_letvarS) in tac app_tac
+        | let app_tac := (apply t_letvarO) in tac app_tac
+        | let app_tac := (apply t_var) in tac app_tac
+        | let app_tac := (apply t_int) in tac app_tac
+        | let app_tac := (apply t_unknown) in tac app_tac
+        | let app_tac := (apply t_mem) in tac app_tac
+        | let app_tac := (eapply t_load) in tac app_tac
+        | let app_tac := (eapply t_store) in tac app_tac
+        | let bop5 := find_typed bop in
+          destruct bop5;
+          first [ let app_tac := (apply t_aop) in tac app_tac
+                | let app_tac := (eapply t_lop) in tac app_tac]
+        | let app_tac := (apply t_aop) in tac app_tac
+        | let app_tac := (eapply t_lop) in tac app_tac
+        | let app_tac := (apply t_uop) in tac app_tac
+        | let app_tac := (eapply t_cast) in tac app_tac
+        | let app_tac := (eapply t_ite) in tac app_tac
+        | let app_tac := (eapply t_extract) in tac app_tac
+        | let app_tac := (eapply t_concat) in tac app_tac  ].
+
+Lemma exp_weakening : forall g gw g' lg e t,
+    (g ++ g');lg |-- e ::: t -> typ_gamma (g ++ gw ++ g') -> (g ++ gw ++ g');lg |-- e ::: t.
 Proof.
-  intros g gw g' e t et gt.
+  intros g gw g' lg e t et gt.
   remember (g ++ g') as G.
   generalize dependent g.
-  induction et.
-  - intros g HeqG.
-    rewrite HeqG in H.
-    apply t_var.
-    + apply in_app_or in H.
-      apply in_or_app.
-      destruct H.
-      * left; assumption.
-      * right; apply in_or_app; right; assumption.
-  - intros g HeqG.
-    apply t_int.
-    auto.
-  - intros g HeqG tGw.
-    apply t_mem; auto.
-  - intros g HeqG tGw.
-    apply (t_load _ _ _ _ sz' sz nat5); auto.
-  - intros g HeqG tGw.
-    apply (t_store _ e1 e2 ed sz' e3); auto.
-  - intros g HeqG tGw.
-    apply t_aop; auto.
-  - intros g HeqG tGw.
-    apply (t_lop _ e1 lop5 e2 sz); auto.
-  - intros g HeqG tGw.
-    apply t_uop; auto.
-  - intros g HeqG tGw.
-    apply (t_cast _ _ _ _ nat5); auto.
-  - intros g HeqG tGw.
-    apply t_let; auto.
-  - intros g HeqG tGw.
-    apply t_unknown; auto.
-  - intros g HeqG tGw.
-    apply t_ite; auto.
-  - intros g HeqG tGw.
-    apply (t_extract _ _ _ _ sz); auto.
-  - intros g HeqG tGw.
-    apply t_concat; auto.
+  induction et;
+    intros g HeqG tGw;
+    try constructor; auto.
+  - rewrite HeqG in H.
+    apply in_app_or in H.
+    apply in_or_app.
+    destruct H.
+    + left; assumption.
+    + right; apply in_or_app; right; assumption.
+  - eapply t_load; auto; auto.
+  - eapply t_lop; auto.
+  - eapply t_cast; auto.
+  - eapply t_extract; auto.
 Qed.
 
 (* TODO: put in bil.ott if works well *)
-Bind Scope bil_exp_scope with exp.
-
-Notation "[ es ./ x ] e" := (letsubst_exp es x e) (at level 9) : bil_exp_scope.
-
 Notation "[m: e , w <- w' ]" := (exp_mem e w w') (at level 79) : bil_exp_scope.
-
 Local Open Scope bil_exp_scope.
 
-Lemma let_multisubst_nil : forall e, (let_multisubst_exp nil e) = e.
-Proof.
-  intro e; induction e; auto;
-    simpl;
-    repeat multimatch goal with
-           | [H : ?e1 = ?e2 |- ?g ] =>
-             try (rewrite H; clear H)
-           end;
-    reflexivity.
-Qed.
+Ltac destruct_var_eqs :=
+  repeat match goal with
+           [ H : ?a = ?b |- _ ] =>
+           (is_var a + is_var b);destruct H
+         end.
 
-Lemma letsubst_let_multisubst : forall x es e,
-    [es./x] e = let_multisubst_exp (cons (x, es) nil) e.
-Proof.
-  intros x es e.
-  induction e; auto.
-  simpl.
-  destruct (eq_letvar letvar5 x);
-  destruct (eq_letvar x letvar5);
-    try tauto;
-    try reflexivity;
-    try symmetry in e; tauto.
-  all: try solve
-  [simpl;
-    repeat multimatch goal with
-             [ IH : [?es./?x]?e = let_multisubst_exp ((?x,?es)::nil) ?e |- _ ] =>
-             try rewrite IH
-           end;
-    reflexivity].
-  simpl.
-  destruct (eq_letvar letvar5 x).
-  - rewrite <- IHe1.
-    rewrite let_multisubst_nil.
-    reflexivity.
-  - repeat multimatch goal with
-             [ IH : [?es./?x]?e = let_multisubst_exp ((?x,?es)::nil) ?e |- _ ] =>
-             try rewrite IH
-           end;
-    reflexivity.
-Qed.
+Ltac on_all_hyps tac :=
+  repeat match goal with
+         | [ H : _ |- _ ] => progress tac H
+         end.
 
-Lemma list_assoc_in : forall {A B : Set} (eq:forall a b:A,{a=b}+{a<>b}) (x:A) (l:list (A*B)),
-    (exists b, In (x,b) l) -> (exists b, list_assoc eq x l = Some b).
+(*Lemma type_exp_lift : forall g lg lg' e t m,
+    g; lg |-- lift_above_m m 0 e ::: t ->
+       g; lg'++lg |-- lift_above_m ((length lg')+m) 0 e ::: t.
 Proof.
-  intros A B eq x l inl.
-  inversion inl.
-  induction l; simpl in H; try contradiction.
-  - destruct a.
-    destruct H; simpl.
-    + inversion H.
-      destruct (eq x x); try contradiction.
-      exists x0; reflexivity.
-    + destruct (eq a x).
-      exists b; reflexivity.
-      apply IHl; try exists x0; assumption.
-Qed.
-
-Ltac subst_lfv_rec_case in_y_subst :=
-  simpl;
-  simpl in in_y_subst;
-  solve [firstorder
-        | try apply in_or_app;
-          apply in_app_or in in_y_subst;
-          destruct in_y_subst as [in_subst_es_1 | in_y_subst];
-          firstorder;
-          subst_lfv_rec_case in_y_subst
-        | right; subst_lfv_rec_case in_y_subst].
-
-Lemma subst_lfv_notin_e1 : forall x y e1 e2,
-    ~ In y (lfv_exp e1) ->
-    In y (lfv_exp (letsubst_exp e1 x e2)) ->   In y (lfv_exp e2).
-Proof.
-  intros x y e1 e2 lfv_e1_nin in_y_subst_e1.
-  induction e2.
-  all: try contradiction.
-  all: auto.
-  all: try subst_lfv_rec_case in_y_subst_e1.
-  - simpl in in_y_subst_e1.
-    destruct (eq_letvar letvar5 x).
-    +  contradiction.
-    + assumption.
-  - simpl.
-    simpl in in_y_subst_e1.
-    apply in_or_app.
-    apply in_app_or in in_y_subst_e1.
-    destruct in_y_subst_e1 as [in_subst_es_1 | in_y_subst].
-    firstorder.
-    right.
-    destruct (eq_letvar letvar5 x).
+  intros g lg lg' e; revert g lg lg'.
+  induction e; intros g lg lg' tt m te;
+    try solve [
+          induction lg'; simpl;  simpl in te;
+          [ assumption
+          | inversion IHlg'; constructor; assumption]].
+  induction lg'; simpl; simpl in te;
+    [ assumption
+    | inversion IHlg'].
+    apply t_letvarS;
+    apply t_letvarO;
     assumption.
-    apply in_list_minus in in_y_subst; destruct in_y_subst.
-    apply (in_list_minus (lfv_exp e2_2) (letvar5 :: nil) y).
-    constructor.
-    + auto.
-    + assumption.
+    apply t_letvarS.
+    simpl in IHlg'.
+    rewrite H, H1.
+    assumption.
+
+    simpl.
+    inversion te.
+    apply t_mem; auto.
+    destruct_var_eqs.
+
+
+
+
+Lemma exp_let_weakening_var : forall g lg wlg lg' lid t,
+    g;lg++lg'|-- exp_letvar lid ::: t ->
+      g; lg ++ wlg ++ lg' |-- lift_above_m (length wlg) (length lg) (exp_letvar lid) ::: t.
+Proof.
+  intros g lg wlg lg' lid t tlid.
+  simpl.
+  destruct (lt_dec lid (length lg)).
+  - remember (exp_letvar lid) as e.
+    inversion l.
+    induction tlid; inversion Heqe.
+    destruct lg.
+    simpl in l; omega.
+    
+    + apply t_letvarO; assumption.
+    + rewrite <- app_comm_cons.
+      apply t_letvarS.
+      apply IHlg.
+
+
+
+    destruct lg; simpl in l; try omega.*)
+
+Lemma canonical_word : forall w : word,
+    w = Sized_Word.sized (Word.natToWord (projT1 w) (Word.wordToNat (projT2 w))).
+Proof.
+  intro w; destruct w.
+  simpl.
+  rewrite Word.natToWord_wordToNat.
+  auto.
 Qed.
+
+
+Lemma exp_let_weakening_int : forall g lg lg' w t,
+    g;lg|-- exp_int w ::: t -> g; lg ++ lg' |-- exp_int w ::: t.
+Proof.
+  induction lg.
+  simpl.
+  intros lg' w t tw.
+  inversion tw.
+  apply t_int; auto.
+  intros lg' w t tw.
+  inversion tw.
+  apply t_int; auto.
+Qed.
+
+Lemma exp_let_weakening1 : forall g lg lg' e t,
+    g;lg|-- e ::: t -> g; lg ++ lg' |-- e ::: t.
+Proof.
+  intros g lg lg' e t.
+  revert lg lg' t.
+  induction e;
+    intros lg lg' tt te;
+    inversion te;
+    destruct_var_eqs;
+    let app_tac t := t; eauto in
+    try solve [do_for_all_exps app_tac].
+  - rewrite <- app_comm_cons;
+    apply t_letvarS;
+    generalize dependent Gl;
+    induction lid0;
+    intros Gl te te1;
+    inversion te;
+    [rewrite <- app_comm_cons;
+     apply t_letvarO;
+     assumption
+    | apply t_letvarS;
+      apply IHlid0;
+      [|apply t_letvarS];
+      assumption].
+  -apply t_mem; auto.
+    apply exp_let_weakening_int.
+    assumption.
+  - apply t_let.
+    apply IHe1.
+    assumption.
+    rewrite app_comm_cons.
+    apply IHe2.
+    assumption.
+Qed.
+
+Lemma exp_let_strengthening_letvar : forall g lg lg' lid t,
+    lid < (length lg) ->
+    g; lg ++ lg' |-- exp_letvar lid ::: t ->
+       g;lg|-- exp_letvar lid ::: t.
+Proof.
+  intros.
+  induction lg'.
+  rewrite app_nil_r in H0.
+  assumption.
+  apply IHlg'.
+  induction lg.
+  simpl in H; omega.
+  
+
+Lemma exp_let_strengthening : forall g lg lg' e t,
+    (forall i, In i (lfv_exp e) -> i < (length lg)) ->
+    g; lg ++ lg' |-- e ::: t ->
+       g;lg|-- e ::: t.
+Proof.
+  intros g lg lg' e t lfv_lt et.
+  induction et; simpl in lfv_lt;
+    simpl;
+    let app_tac t := simpl; t; eauto in
+    try solve [do_for_all_exps app_tac].
+  specialize (lfv_lt 0 (or_introl eq_refl)).
+  destruct lg;[simpl in lfv_lt; omega|].
+  apply t_letvarO.
+
+  induction e; simpl;
+    intros lg lg' tt lfv_lt te;
+    inversion te;
+    let app_tac t := simpl; t; eauto in
+    try solve [do_for_all_exps app_tac].
+  - destruct_var_eqs.
+    specialize (lfv_lt 0 (or_introl eq_refl)).
+    destruct lg.
+    simpl in lfv_lt; omega.
+    rewrite <- app_comm_cons in H.
+    inversion H.
+    destruct_var_eqs.
+    apply t_letvarO.
+    assumption.
+  - destruct_var_eqs.
+    specialize (lfv_lt (S lid0) (or_introl eq_refl)).
+    destruct lg;[simpl in lfv_lt; omega|].
+    rewrite <- app_comm_cons in H.
+    inversion H.
+    apply t_letvarS.
+    
+
+Lemma exp_let_weakening : forall g lg wlg lg' e t,
+    g;lg++lg'|-- e ::: t -> g; lg ++ wlg ++ lg' |-- lift_above_m (length wlg) (length lg) e ::: t.
+Proof.
+  intros g lg wlg lg' e; revert lg wlg lg'.
+  induction e; intros; simpl; inversion H.
+  - apply t_var; auto.
+  - destruct (lt_dec 0 (length lg)).
+    + destruct lg.
+      simpl in l; omega.
+      inversion H0.
+      rewrite <- H6;
+        rewrite H4.
+      apply t_letvarO; auto.
+    + rewrite Nat.add_comm.
+      simpl.
+      assert (length lg = 0).
+      omega.
+      apply length_zero_iff_nil in H5.
+      rewrite H5.
+      simpl.
+      rewrite H5 in H0; simpl in H0.
+      induction wlg.
+      * simpl.
+        rewrite <- H0.
+        rewrite H4.
+        apply t_letvarO.
+        assumption.
+      * simpl.
+        apply t_letvarS.
+        assumption.
+  - destruct (lt_dec (S lid0) (length lg)).
+    + apply exp_let_weakening1.
+      destruct_var_eqs.
+      remember (exp_letvar lid5) as e.
+      destruct_var_eqs.
+      
+      induction H; inversion Heqe;
+      destruct_var_eqs;
+      inversion H2.
+      rewrite <- H4.
+      apply IHtype_exp.
+      
+
+      destruct lg; simpl in l; [> omega |].
+      rewrite <- app_comm_cons.
+      apply t_letvarS.
+      inversion H0.
+      apply le_S_n in l.
+      induction lg.
+      simpl in l; omega.
+      
 
 Lemma subst_lfv : forall x y e1 e2,
     In y (lfv_exp (letsubst_exp e1 x e2)) -> In y (lfv_exp e1) \/  In y (lfv_exp e2).
@@ -1220,9 +1339,6 @@ Lemma letsubst_distributes : forall x y es1 es2 e,
      + letsubst_distributes_rec_case.
 Qed.
 
-
-Notation "g |-- e ::: t" := (type_exp g e t) (at level 99) : type_scope.
-
 Ltac subst_type_exp app_tac :=
   inversion et;
   match goal with
@@ -1260,22 +1376,6 @@ Proof.
   - let app_tac := (apply t_cast with (nat5 := nat0)) in
     subst_type_exp app_tac.
   -
-
-Ltac find_typed t :=
-  multimatch goal with
-  | [ e : t |- _ ] => e
-  end.
-
-Ltac do_to_all_exps tac :=
-  first [ let app_tac := (apply t_mem) in tac app_tac
-        | let app_tac := (eapply t_load) in tac app_tac
-        | let app_tac := (eapply t_store) in tac app_tac
-        | let bop5 := find_typed bop in
-          destruct bop5;
-          first [ let app_tac := (apply t_aop) in tac app_tac
-                | let app_tac := (eapply t_lop) in tac app_tac]
-        | let app_tac := (apply t_uop) in tac app_tac
-        | let app_tac := (eapply t_cast) in tac app_tac ].
 
 Ltac get_var_from_type_subst_goal :=
   match goal with
@@ -1458,6 +1558,7 @@ Proof.
             unify_typing_judgments;
             type_subst_solve_IH.
           destruct_equalities_on type.
+          
           apply IHe2.
 
           type_subst_solve_IH.
