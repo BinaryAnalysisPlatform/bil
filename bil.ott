@@ -438,6 +438,7 @@ defns typing_exp :: '' ::=
  ----------------- :: letvarO
  G; Gl,t |- 0 :: t
 
+ t' is ok
  G; Gl |- lid :: t
  ---------------------- :: letvarS
  G; Gl,t' |- S lid :: t
