@@ -376,7 +376,7 @@ Proof.
   apply IHlg'.
   induction lg.
   simpl in H; omega.
-  
+  rewrite
 
 Lemma exp_let_strengthening : forall g lg lg' e t,
     (forall i, In i (lfv_exp e) -> i < (length lg)) ->

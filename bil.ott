@@ -77,7 +77,7 @@ grammar
    {{ coq (exp_letvar (S [[lid]])) }}
    | word                                       ::      :: int
    {{ com -- an immediate value }}
-   | e [ w <- v' ]                              ::      :: mem
+   | e [ w <- v' : sz ]                         ::      :: mem
    {{ com -- a memory value }}
    | e1 [ e2 , endian ] : nat                   ::      :: load
    {{ com -- load a value from address $e_2$ at storage $e_1$}}
@@ -111,7 +111,7 @@ grammar
 
  val,v :: val_ ::=
    | word                                      ::      :: imm
-   | v [ w <- v' ]                             ::      :: mem
+   | v [ w <- v' : sz ]                        ::      :: mem
    | unknown [ string ] : type                 ::      :: bot
 
  word,w :: word_ ::= {{coq sized_word}}
@@ -302,6 +302,8 @@ grammar
    | lgamma , type                              ::      :: cons
    {{ com -- extend }}
    {{ coq (cons [[type]] [[lgamma]]) }}
+   | ( Gl )                                     :: S    :: parens
+   {{ coq ([[Gl]]) }}
 
 formula :: formula_ ::=
  | judgement                ::   :: judgement
@@ -312,6 +314,8 @@ formula :: formula_ ::=
  | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
  | nat1 % sz = 0            :: M :: nat_mod_z {{ coq (exists n_, [[nat1]] = n_ * [[sz]]) }}
+ | size_of v = sz           :: M :: size_of_v
+ {{ coq (has_size v sz) }}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
      {{ coq ([[e1]] = [[e2]]) }}
@@ -351,13 +355,17 @@ substitutions
 
 freevars
         exp var :: fv
-        exp lid :: lfv
 
 embed
 {{ coq
 
 Bind Scope bil_exp_scope with exp.
 Reserved Notation "[ es ./ i ]" (at level 70, no associativity).
+Notation "[m: e , w <- w' @ sz ]" := (exp_mem e w w' sz) (at level 79) : bil_exp_scope.
+
+Inductive has_size : exp -> nat -> Prop :=
+  | mem_has_size : forall e w v sz, has_size ([m: e, w <- v @ sz]) sz
+  | unk_has_size : forall str nat sz, has_size (exp_unk str (type_mem nat sz)) sz.
 
 Fixpoint letsubst (es : exp) (i : lid) (e : exp) : exp :=
   match e with
@@ -365,7 +373,7 @@ Fixpoint letsubst (es : exp) (i : lid) (e : exp) : exp :=
   | exp_letvar i' => if Nat.eqb i i' then es else exp_letvar i'
   | exp_int w => exp_int w
   (* The second argument to mem is a value and therefore closed *)
-  | exp_mem e w v => exp_mem ([es./i] e) w v
+  | exp_mem e w v sz => exp_mem ([es./i] e) w v sz
   | exp_load em ea ed sz => exp_load ([es./i]em) ([es./i]ea) ed sz
   | exp_store em ea ed sz ev => exp_store ([es./i]em) ([es./i]ea) ed sz ([es./i]ev)
   | exp_binop e1 bop e2 => exp_binop ([es./i]e1) bop ([es./i]e2)
@@ -381,6 +389,18 @@ where "[ es ./ i ]" := (letsubst es i) : bil_exp_scope.
 
 }}
 
+defns typing_type :: '' ::=
+ defn t is ok :: :: type_wf :: twf_ by
+
+ sz > 0
+ -------------- :: imm
+ imm<sz> is ok
+
+ nat > 0
+ sz > 0
+ -------------- :: mem
+ mem<nat,sz> is ok
+
 defns typing_gamma :: '' ::=
  defn G is ok :: :: typ_gamma :: tg_ by
 
@@ -388,19 +408,33 @@ defns typing_gamma :: '' ::=
  [] is ok
 
  id notin dom(G)
+ t is ok
  G is ok
  --------------- :: cons
  (G, id:t) is ok
+
+ defn Gl is ok :: :: typ_lgamma :: tlg_ by
+
+ --------- :: nil
+ [] is ok
+
+ t is ok
+ Gl is ok
+ --------------- :: cons
+ (Gl, t) is ok
 
 defns typing_exp :: '' ::=
  defn G ; Gl |- exp '::' type :: :: type_exp :: t_ by
 
  id:t isin G
  G is ok
+ Gl is ok
  ----------------- :: var
  G; Gl |- id:t :: t
 
  G is ok
+ t is ok
+ Gl is ok
  ----------------- :: letvarO
  G; Gl,t |- 0 :: t
 
@@ -410,6 +444,7 @@ defns typing_exp :: '' ::=
 
  sz > 0
  G is ok
+ Gl is ok
  ----------------- :: int
  G; Gl |- num:sz :: imm<sz>
 
@@ -417,10 +452,9 @@ defns typing_exp :: '' ::=
  sz > 0
  nat > 0
  G; Gl |- e :: mem<nat,sz>
- G; Gl |- w :: imm<nat>
- G; Gl |- w' :: imm<sz>
+ G; Gl |- v :: imm<sz>
  ---------------------------------------------------------- :: mem
- G; Gl |- e[w <- w'] :: mem<nat,sz>
+ G; Gl |- e[num1:nat <- v : sz] :: mem<nat,sz>
 
 
  sz' % sz = 0
@@ -465,7 +499,9 @@ defns typing_exp :: '' ::=
  -------------------------- :: let
  G; Gl |- let e1 : t in e2 :: t'
 
+ t is ok
  G is ok
+ Gl is ok
  ------------------------- :: unknown
  G; Gl |- unknown[str]:t :: t
 
@@ -588,38 +624,31 @@ defns reduce_exp :: '' ::=
  delta |- e1[v2,ed]:sz ~> e1'[v2,ed]:sz
 
  ------------------------------------------------------ :: load_byte
- delta |- v[num : sz <- w'][num : sz,ed']:sz ~> w'
-
- w <> num : sz
- ----------------------------------------------------------- :: load_byte_from_next
- delta |- v[w <- w'][num:sz,ed']:sz ~> v[num : sz,ed']:sz
+ delta |- v[w <- w':sz][w,ed']:sz ~> w'
 
  w1 <> w2
- -------------------------------------------------------------- :: load_rec
- delta |- (v1 with [w1,ed]:sz <- v3)[w2,ed]:sz ~> v1[w2,ed]:sz
+ ----------------------------------------------------------- :: load_byte_from_next
+ delta |- v[w1 <- w':sz][w2,ed]:sz ~> v[w2,ed]:sz
 
  ---------------------------------------------------------- :: load_un_mem
  delta |- (unknown[str]:t)[v,ed]:sz ~> unknown[str]:imm<sz>
 
  sz' > sz
  succ w = w'
- v :=def v1 with [w,ed]:sz <- v2
+ size_of v = sz
  ------------------------------------------------------------- :: load_word_be
  delta |- v[w,be]:sz' ~> v[w,be]:sz @ (v[w', be]:(sz'-sz))
 
  sz' > sz
  succ w = w'
- v :=def v1 with [w,ed]:sz <- v2
+ size_of v = sz
  -------------------------------------------------------- :: load_word_el
  delta |- v[w,el]:sz' ~> v[w',el]:(sz'-sz) @ (v[w,be]:sz)
-
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% STORE                                             %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 
 
  delta |- e3 ~> e3'
@@ -638,25 +667,25 @@ defns reduce_exp :: '' ::=
 
  sz' > sz
  succ w = w'
- v :=def v1 with [w2,ed]:sz <- v2
+ size_of v = sz
  e1 :=def (v with [w,be]:sz <- high:sz[val])
  ---------------------------------------------------------------------------------- :: store_word_be
  delta |- v with [w,be]:sz' <- val ~> e1 with [w',be]:(sz'-sz) <- low:(sz'-sz)[val]
 
  sz' > sz
  succ w = w'
- v :=def v1 with [w2,ed]:sz <- v2
+ size_of v = sz
  e1 :=def (v with [w,el]:sz <- low:sz[val])
  -------------------------------------------------------------------------------- :: store_word_el
  delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
  -------------------------------------------------------------- :: store_val
- delta |- v with [num:sz,ed] : sz <- w' ~> v[num:sz <- w']
+ delta |- v with [num:sz,ed] : sz' <- w' ~> v[num:sz <- w' : sz']
 
- --------------------------------------------------------------------------------- :: store_un
- delta |- v with [num:sz,ed] : sz <- unknown[str]:t ~> v[num:sz <- unknown[str]:t]
+ ----------------------------------------------------------------------------------------- :: store_un
+ delta |- v with [num:sz,ed] : sz' <- unknown[str]:t ~> v[num:sz <- unknown[str]:t : sz']
 
- v :=def v'[num:sz <- v1]
+ size_of v = sz
  --------------------------------------------------------------------------------- :: store_un_addr
  delta |- v with [unknown[str]:imm<nat>,ed] : sz <- v2 ~> unknown[str]:mem<nat,sz'>
 
