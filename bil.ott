@@ -490,6 +490,7 @@ defns typing_exp :: '' ::=
  G; Gl |- uop e1 :: imm<sz>
 
 
+ sz > 0
  G; Gl |- e :: imm<nat>
  --------------------- :: cast
  G; Gl |- cast:sz[e] :: imm<sz>
