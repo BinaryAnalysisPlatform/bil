@@ -221,30 +221,48 @@ Ltac do_for_all_exps tac :=
         | let app_tac := (eapply t_extract) in tac app_tac
         | let app_tac := (eapply t_concat) in tac app_tac  ].
 
+Ltac apply_concat_rule :=
+  let rewrite_for_concat sz1 sz2 :=
+      rewrite Word.sz_minus_nshift with (sz := sz1) (nshift := sz2);
+      [|omega] in
+  match goal with
+  | [|- _;_|-- exp_concat _ _ ::: type_imm (_ + _)] => idtac
+  | [|- _;_|-- exp_concat ?e1 ?e2 ::: _] =>
+    match e1 with context [?sz1 - ?sz2] =>
+        rewrite_for_concat sz1 sz2
+    end
+    || match e2 with context [?sz1 - ?sz2] =>
+        rewrite_for_concat sz1 sz2;
+          rewrite plus_comm
+    end
+  end;
+  eapply t_concat.
+
 Ltac apply_type_rule :=
   let rec fn_head e :=
       match e with ?f _ => fn_head f
               | ?f => f
       end in
-  match goal with
+  lazymatch goal with
     [|- _;_|-- ?e ::: _] =>
-    match fn_head e with
-    | exp_var => apply t_var
+    lazymatch fn_head e with
+    | exp_var => apply t_var || fail "could not use t_var"
     | exp_letvar => apply t_letvarO || eapply t_letvarS
-    | exp_int => apply t_int
-    | exp_mem => eapply t_mem
-    | exp_load => eapply t_load
-    | exp_store => eapply t_store
+                    || fail "could not use t_letvarO or t_letvarS"
+    | exp_int => apply t_int || fail "could not use t_int"
+    | exp_mem => eapply t_mem || fail "could not use t_mem"
+    | exp_load => eapply t_load || fail "could not use t_load"
+    | exp_store => eapply t_store || fail "could not use t_store"
     | exp_binop =>
       try match goal with [bop5 : bop |- _] => destruct bop5 end;
-      apply t_aop || apply t_lop
-    | exp_unop => apply t_uop
-    | exp_cast => eapply t_cast
-    | exp_let => apply t_let
-    | exp_unk => apply t_unknown
-    | exp_ite => apply t_ite
-    | exp_ext => eapply t_extract
-    | exp_concat => eapply t_concat
+      apply t_aop || apply t_lop || fail "could not use t_aop or t_lop"
+    | exp_unop => apply t_uop || fail "could not use t_uop"
+    | exp_cast => eapply t_cast || fail "could not use t_cast"
+    | exp_let => apply t_let || fail "could not use t_let"
+    | exp_unk => apply t_unknown || fail "could not use t_unknown"
+    | exp_ite => apply t_ite || fail "could not use t_ite"
+    | exp_ext => eapply t_extract || fail "could not use t_extract"
+    | exp_concat => apply_concat_rule || fail "could not use t_concat"
     end
   end.
 
@@ -776,6 +794,8 @@ Lemma exp_let_weakening : forall g lg wlg lg' e t,
     g;lg++lg'|-- e ::: t ->
       g; lg ++ wlg ++ lg' |-- lift_above_m (length wlg) (length lg) e ::: t.
 Proof.
+Admitted.
+(*
   intros g lg wlg lg' e; revert lg wlg lg'.
   induction e using exp_ind_rec_lid; intros; simpl;
     match goal with
@@ -838,8 +858,26 @@ Proof.
       auto.
     inversion H.
     inversion H7; assumption.
-    
-    destruct (lt_dec (S lid0) (length lg)).
+    rewrite <- app_nil_l with (l := Gl).
+    rewrite app_comm_cons.
+    rewrite app_assoc.
+    rewrite <- Nat.add_succ_l.
+    rewrite <- Nat.add_1_l.
+    assert (forall {A : Set} (a : A), length (a :: nil) = 1) by
+        (intros A a; simpl; reflexivity).
+    rewrite <- H2 with (a := t').
+    rewrite Nat.add_comm with (m := length wlg) .
+    rewrite <- app_length.
+    apply IHe.
+    inversion H.
+    inversion H8.
+    apply typ_lgamma_app.
+    assumption.
+    constructor; auto.
+    constructor.
+    assumption.
+    simpl.
+    destruct (lt_dec (S lid0) (S (length lg))).
     destruct (lt_dec lid0 (length lg)) in IHe.
     + simpl in IHe.
 
@@ -897,6 +935,7 @@ Proof.
     apply IHe2 with (lg := t :: lg).
     simpl; auto.
 Qed.
+*)
 
 Ltac apply_all e t:=
   repeat match goal with
@@ -904,32 +943,106 @@ Ltac apply_all e t:=
            specialize (H e)
          end.
 
-
-Ltac apply_type_rule :=
-  let rec fn_head e :=
-      match e with ?f _ => fn_head f
-              | ?f => f
-      end in
+Lemma var_type_wf : forall g id t,
+    typ_gamma g ->
+    (In (var_var id t) g) ->
+    type_wf t.
+Proof.
+  induction g; simpl;
+    intros id t tg ing;
+    inversion tg.
+  contradiction.
+  destruct ing.
   match goal with
-    [|- _;_|-- ?e ::: _] =>
-    match fn_head e with
-    | exp_letvar => apply t_letvarO || eapply t_letvarS
-    | exp_int => apply t_int
-    | exp_mem => eapply t_mem
-    | exp_load => eapply t_load
-    | exp_store => eapply t_store
-    | exp_binop =>
-      try match goal with [bop5 : bop |- _] => destruct bop5 end;
-      apply t_aop || apply t_lop
-    | exp_unop => apply t_uop
-    | exp_cast => eapply t_cast
-    | exp_let => apply t_let
-    | exp_unk => apply t_unknown
-    | exp_ite => apply t_ite
-    | exp_ext => eapply t_extract
-    | exp_concat => eapply t_concat
-    end
+    [H1 : ?a = _ ?t,
+          H2 : _ ?t' = ?a,
+               H_wf : type_wf ?t'
+     |- type_wf ?t] =>
+    rewrite H1 in H2;
+      inversion H2;
+      destruct_var_eqs_strict;
+      assumption
   end.
+  match goal with
+    [ IH : forall id t, _ -> _ -> type_wf t |- _] =>
+    eapply IH; eauto
+  end.
+Qed.
+Lemma type_exp_type_wf : forall g gl e t,
+    g;gl|-- e ::: t -> type_wf t.
+Proof.
+  intros g gl e; revert gl;
+    induction e using exp_ind_rec_lid;
+    intros gl tt te;
+    inversion te;
+    destruct_var_eqs_strict;
+    [eapply var_type_wf|..];
+    eauto;
+    try solve [constructor;
+               eauto].
+  constructor.
+  omega.
+  constructor.
+  apply IHe1 in H3.
+  apply IHe2 in H5.
+  inversion H3.
+  inversion H5.
+  omega.
+Qed.
+
+Ltac solve_type_wf :=
+  tryif match goal with [ |- type_wf _] => idtac end then idtac
+  else fail "goal not a type wellformedness judgment";
+  first [match goal with
+           [H : ?sz > 0 |- type_wf (type_imm ?sz)] =>
+           constructor; assumption
+         end
+        | constructor; solve [auto | omega]].
+
+Ltac solve_typ_gamma :=
+  tryif match goal with [ |- typ_gamma _ ] => idtac end then idtac
+  else fail "goal not a context wellformedness judgment";
+  match goal with
+    [H : ?g;_ |-- _ ::: _ |- typ_gamma ?g] =>
+    apply type_exp_typ_gamma in H; assumption
+  end.
+
+
+Lemma types_has_size : forall g gl v n sz,
+    is_val_of_exp v ->
+    g;gl |-- v ::: type_mem n sz -> has_size v sz.
+Proof.
+  intros g gl v n sz vv vt;
+    apply val_closed in vt; [|assumption];
+      revert vv vt;
+      induction v;
+      simpl;
+      auto;
+      try contradiction;
+      intros vv vt;
+      inversion vt;
+      destruct_var_eqs_strict;
+      constructor.
+Qed.
+
+Lemma has_size_unique : forall v sz1 sz2,
+    has_size v sz1 ->
+    has_size v sz2 -> sz1 = sz2.
+Proof.
+  intros v sz1 sz2 hsz1 hsz2;
+    inversion hsz1;
+    inversion hsz2;
+    destruct_var_eqs_strict;
+    match goal with
+      [ H1 : _ = ?v, H2 : _ = ?v |- _] =>
+      rewrite <- H1 in H2;
+        inversion H2;
+        auto
+    end.
+Qed.
+
+
+Require Import bil.Sized_Word.
 
 Lemma exp_preservation : forall d e e' t,
     type_delta d ->
@@ -955,7 +1068,23 @@ Proof.
                                destruct_var_eqs;
                                assumption
                  end
-               end ].
+               end
+              | apply_type_rule; eauto;
+                destruct_var_eqs;
+                first [ solve_type_wf
+                      | solve_typ_gamma
+                      | solve_typ_lgamma]].
+  Focus 14.
+  unfold sw_lift_binop.
+  destruct w1, w2.
+  rewrite Sized_Word.lift_binop_in_equal_sizes.
+  apply_type_rule; eauto;
+  destruct_var_eqs;
+  first [ solve_type_wf
+        | solve_typ_gamma
+        | solve_typ_lgamma].
+  all: try 
+       apply Sized_Word.lift_binop_in_equal_sizes.
   - pose proof in_delta_types as v_types.
     rewrite <- H1 in H0.
     specialize (v_types id5 t v delta5 td H0).
@@ -969,6 +1098,58 @@ Proof.
     simpl.
     rewrite app_nil_r.
     assumption.
+  -  (apply_type_rule;
+                    eauto;
+                    try match goal with
+                          [H:?G;_|--_:::_ |- typ_gamma ?G] =>
+                          apply type_exp_typ_gamma in H;
+                          assumption
+                        end).
+     eapply type_exp_type_wf.
+     eauto.
+     - apply_type_rule.
+       solve_type_wf.
+       solve_typ_gamma.
+       solve_typ_lgamma.
+     - apply types_has_size in H12 as e1sz0.
+       apply has_size_unique with (sz1 := sz) in e1sz0.
+       apply_type_rule.
+       apply_type_rule;
+         eauto;
+         destruct_var_eqs_strict.
+       exists 1.
+       simpl.
+       rewrite plus_comm; simpl.
+       reflexivity.
+       apply type_exp_type_wf in H12.
+       inversion H12.
+       auto.
+       rewrite plus_comm.
+       rewrite <- Nat.add_sub_assoc;[|omega].
+       rewrite Nat.sub_diag.
+       rewrite plus_comm.
+       simpl.
+       apply_type_rule;
+       destruct_var_eqs_strict.
+       elim H9.
+       intros n1 sz0eqsz.
+       destruct n1;[omega|].
+       exists n1.
+       simpl in sz0eqsz.
+       rewrite sz0eqsz.
+       rewrite plus_comm.
+       rewrite <- Nat.add_sub_assoc;[|omega].
+       rewrite Nat.sub_diag.
+       rewrite plus_comm.
+       simpl.
+       eauto.
+       omega.
+       eauto.
+       destruct H1.
+       Require Import bil.Sized_Word.
+       apply Sized_Word.lift_binop_in_equal_sizes.
+       apply_type_rule.
+
   - rewrite <- le_plus_minus_r with (m := sz'0) (n := sz) at 2; [|omega].
     apply_type_rule.
     apply_type_rule.
@@ -977,22 +1158,6 @@ Proof.
     simpl.
     rewrite plus_comm; simpl.
     eauto.
-    Lemma types_has_size : forall g gl v n sz,
-        is_val_of_exp v ->
-        g;gl |-- v ::: type_mem n sz -> has_size v sz.
-    Proof.
-      intros g gl v n sz vv vt;
-      apply val_closed in vt; [|assumption];
-      revert vv vt;
-        induction v;
-        simpl;
-        auto;
-        try contradiction;
-        intros vv vt;
-        inversion vt;
-        destruct_var_eqs_strict;
-        constructor.
-    Qed.
     (* TODO: need a type wellformedness judgment? *)
     Lemma type_exp_type_wf : forall g gl e,
         (forall n sz, g;gl |-- e ::: type_mem n sz -> n > 0 /\ sz > 0) /\
