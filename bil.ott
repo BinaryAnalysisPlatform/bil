@@ -681,6 +681,7 @@ defns reduce_exp :: '' ::=
  -------------------------------------------------------------------------------- :: store_word_el
  delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
+ size_of v = sz'
  -------------------------------------------------------------- :: store_val
  delta |- v with [num:sz,ed] : sz' <- w' ~> v[num:sz <- w' : sz']
 
