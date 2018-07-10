@@ -238,6 +238,12 @@ Ltac apply_concat_rule :=
   end;
   eapply t_concat.
 
+Ltac normalize_words :=
+  (* dummy argument because Ltac can't keep track of bound variables *)
+  let w := idtac in
+  repeat change (existT Word.word) with (existT (fun x => Word.word x));
+  repeat change (existT _ _ ?w) with (Sized_Word.sized w).
+
 Ltac apply_type_rule :=
   let rec fn_head e :=
       match e with ?f _ => fn_head f
@@ -249,13 +255,23 @@ Ltac apply_type_rule :=
     | exp_var => apply t_var || fail "could not use t_var"
     | exp_letvar => apply t_letvarO || eapply t_letvarS
                     || fail "could not use t_letvarO or t_letvarS"
-    | exp_int => apply t_int || fail "could not use t_int"
+    | exp_int =>
+      normalize_words;
+      match goal with
+      | [|- _;_ |-- exp_int (Sized_Word.sized (Word.natToWord _)) ::: _ ] => idtac
+      | [|- _;_ |-- exp_int (Sized_Word.sized ?wd) ::: type_imm ?x ] =>
+        rewrite <- Word.natToWord_wordToNat with (sz := x) (w := wd)
+        || fail 1 "could not rewrite goal to use natToWord"
+      | [|- _;_ |-- exp_int ?w ::: type_imm _] =>
+        fail 1 "word" w "not of an applicable form"
+      end;
+      apply t_int || fail "could not use t_int"
     | exp_mem => eapply t_mem || fail "could not use t_mem"
     | exp_load => eapply t_load || fail "could not use t_load"
     | exp_store => eapply t_store || fail "could not use t_store"
     | exp_binop =>
       try match goal with [bop5 : bop |- _] => destruct bop5 end;
-      apply t_aop || apply t_lop || fail "could not use t_aop or t_lop"
+      apply t_aop || eapply t_lop || fail "could not use t_aop or t_lop"
     | exp_unop => apply t_uop || fail "could not use t_uop"
     | exp_cast => eapply t_cast || fail "could not use t_cast"
     | exp_let => apply t_let || fail "could not use t_let"
@@ -293,12 +309,6 @@ Ltac destruct_var_eqs :=
   repeat match goal with
            [ H : ?a = ?b |- _ ] =>
            (is_var a + is_var b);destruct H
-         end.
-
-Ltac destruct_var_eqs_strict :=
-  repeat match goal with
-           [ H : ?a = ?b |- _ ] =>
-           is_var a; is_var b; destruct H
          end.
 
 Ltac on_all_hyps tac :=
@@ -435,7 +445,7 @@ Proof.
                   [IH : forall lg t, ?g; lg |-- ?e ::: t -> typ_lgamma lg,
                      H : ?g;?lg |-- ?e ::: _ |- typ_lgamma ?lg] => eapply IH; eauto
                 end].
-  destruct_var_eqs_strict.
+  subst.
   constructor.
   assumption.
   match goal with
@@ -709,7 +719,7 @@ Proof.
   induction e using exp_ind_rec_lid; simpl;
     intros lg lg' tt lfv_lt te;
     inversion te;
-    destruct_var_eqs_strict;
+    subst;
     let app_tac t :=
         simpl; t; eauto;
           match goal with
@@ -725,7 +735,7 @@ Proof.
         |do_for_all_exps app_tac].
   - destruct lg;[simpl in lfv_lt;omega|].
     inversion H.
-    destruct_var_eqs_strict;
+    subst;
     simpl; apply t_letvarO; auto.
     solve_typ_lgamma.
   - destruct_var_eqs.
@@ -960,7 +970,7 @@ Proof.
      |- type_wf ?t] =>
     rewrite H1 in H2;
       inversion H2;
-      destruct_var_eqs_strict;
+      subst;
       assumption
   end.
   match goal with
@@ -975,7 +985,7 @@ Proof.
     induction e using exp_ind_rec_lid;
     intros gl tt te;
     inversion te;
-    destruct_var_eqs_strict;
+    subst;
     [eapply var_type_wf|..];
     eauto;
     try solve [constructor;
@@ -993,11 +1003,12 @@ Qed.
 Ltac solve_type_wf :=
   tryif match goal with [ |- type_wf _] => idtac end then idtac
   else fail "goal not a type wellformedness judgment";
-  first [match goal with
+  solve [match goal with
            [H : ?sz > 0 |- type_wf (type_imm ?sz)] =>
            constructor; assumption
          end
-        | constructor; solve [auto | omega]].
+        | constructor; solve [auto | omega]
+        | eapply type_exp_type_wf; eauto].
 
 Ltac solve_typ_gamma :=
   tryif match goal with [ |- typ_gamma _ ] => idtac end then idtac
@@ -1021,9 +1032,16 @@ Proof.
       try contradiction;
       intros vv vt;
       inversion vt;
-      destruct_var_eqs_strict;
+      subst;
       constructor.
 Qed.
+
+Ltac destruct_var_eqs_strict :=
+  repeat match goal with
+           [ H : ?a = ?b |- _ ] =>
+           is_var a; is_var b; destruct H
+         end.
+
 
 Lemma has_size_unique : forall v sz1 sz2,
     has_size v sz1 ->
@@ -1044,6 +1062,144 @@ Qed.
 
 Require Import bil.Sized_Word.
 
+Lemma word_size_in_type : forall g gl sz1 w sz2,
+    g;gl|-- exp_int (existT Word.word sz1 w) ::: type_imm sz2 -> sz1 = sz2.
+Proof.
+  intros g gl sz1 w sz2 te.
+  inversion te.
+  reflexivity.
+Qed.
+
+Ltac unify_sizes :=
+  repeat match goal with
+         | [ H : _;_|-- exp_int (existT _ ?sz1 _) ::: type_imm ?sz2 |- _] =>
+           tryif unify sz1 sz2 then fail else
+             let Hsz := fresh "Hsz" in
+             apply word_size_in_type in H as Hsz;
+             destruct Hsz
+         | [ H1 : has_size ?v ?sz1, H2 : has_size ?v ?sz2 |- _] =>
+           tryif unify sz1 sz2 then fail else
+             fail 1 "TODO"
+         | [ H1 : has_size ?v ?sz1', H2 : _;_ |-- ?v ::: type_mem _ ?sz2 |- _] =>
+           let Hsz := fresh "Hsz" in
+           pose proof H1 as Hsz;
+           apply has_size_unique with (sz1 := sz2) in Hsz;
+           [|apply types_has_size in H2; assumption];
+           destruct Hsz
+         end.
+
+Lemma in_type_delta : forall d i t v, type_delta d -> In (var_var i t,v) d -> nil;nil |-- v ::: t.
+Proof.
+  intros d i t v td id; induction td;
+  simpl in id; inversion id;
+  [match goal with [H: (_, _) = ( _, _) |-_ ] => inversion H end|];
+  subst;
+  auto.
+Qed.
+Lemma exp_weakening_nil : forall (g : list var) (lg : lgamma) (e : exp) (t : type),
+       (nil; lg |-- e ::: t) -> typ_gamma g -> g; lg |-- e ::: t.
+Proof.
+  intros g lg e t te tg;
+  rewrite <- app_nil_r with (l := g);
+  rewrite <- app_nil_l with (l := g ++ nil);
+  apply exp_weakening;
+    simpl;
+    [|rewrite app_nil_r];
+    assumption.
+Qed.
+
+Ltac solve_binop_preservation :=
+  match goal with
+  | [|- _;_ |-- exp_int (sw_lift_binop _ _ _) ::: _] => unfold sw_lift_binop
+  | [|- _;_ |-- exp_int (sw_lift_shiftop _ _ _) ::: _] => unfold sw_lift_shiftop
+  end;
+  repeat match goal with
+         | [ w : word |- _] => destruct w
+         end;
+  unify_sizes;
+  try rewrite Sized_Word.lift_binop_in_equal_sizes;
+  simpl;
+  apply_type_rule;
+  first [match goal with
+         | [ H : _;_|-- exp_int _ ::: type_imm ?x |- ?x > 0] =>
+           inversion H; auto
+         end
+        | solve_typ_gamma
+        | solve_typ_lgamma].
+
+Ltac self_multiple :=
+  exists 1;
+   simpl;
+   rewrite Nat.add_0_r;
+   reflexivity.
+
+Lemma mult_gtz : forall a b, a * b > 0 -> b > 0.
+Proof.
+  induction b; intros; omega.
+Qed.
+
+Ltac solve_size_constraint :=
+  unify_sizes;
+  subst;
+  try omega;
+  match goal with [H : _;_|--_::: ?t |- ?sz > 0] =>
+                  match t with context [sz] =>
+                               apply type_exp_type_wf in H;
+                               inversion H;
+                               assumption
+                  end end.
+
+Lemma exp_type_succ : forall g gl w w' sz,
+    succ w (exp_int w') ->
+    g;gl |-- exp_int w ::: type_imm sz ->
+      g;gl |-- exp_int w' ::: type_imm sz.
+Proof.
+  intros g gl w w' sz wsw tw.
+  inversion tw.
+  subst.
+  inversion wsw.
+  unfold sw_lift_binop.
+  subst.
+  normalize_words.
+  apply_type_rule; auto.
+Qed.
+
+
+Ltac destruct_existentials :=
+  repeat match goal with
+           [ H : exists e, _ |- _] => destruct H end.
+
+
+Ltac existential_as_evar f :=
+  match goal with [|- exists (x : ?t), _] =>
+                  let x := fresh "_" in
+                  evar (x : t);
+                  let x' := eval unfold x in x in
+                  exists (f x');
+                  clear x
+  end.
+
+Ltac sub_n_multiple :=
+  existential_as_evar (fun x => x - 1);
+  rewrite Nat.mul_sub_distr_r; simpl;
+  rewrite Nat.add_0_r;
+  repeat f_equal.
+
+Ltac solve_is_multiple :=
+  destruct_existentials;
+  unify_sizes;
+  subst;
+  solve [self_multiple | sub_n_multiple].
+
+Ltac solve_type_rule_using tac :=
+  apply_type_rule; eauto;
+  solve [ solve_is_multiple
+        | solve_size_constraint
+        | tac
+        | solve_type_rule_using tac].
+
+Ltac solve_type_rule := solve_type_rule_using idtac.
+
 Lemma exp_preservation : forall d e e' t,
     type_delta d ->
     (map fst d);nil |-- e ::: t ->
@@ -1053,7 +1209,7 @@ Proof.
   intros d e e' t td te es.
   generalize dependent t.
   induction es; intros t0 te; inversion te;
-    destruct_var_eqs_strict;
+    subst;
     try solve [try (apply_type_rule;
                     eauto;
                     try match goal with
@@ -1070,21 +1226,66 @@ Proof.
                  end
                end
               | apply_type_rule; eauto;
-                destruct_var_eqs;
+                subst;
                 first [ solve_type_wf
                       | solve_typ_gamma
-                      | solve_typ_lgamma]].
-  Focus 14.
-  unfold sw_lift_binop.
-  destruct w1, w2.
-  rewrite Sized_Word.lift_binop_in_equal_sizes.
-  apply_type_rule; eauto;
-  destruct_var_eqs;
-  first [ solve_type_wf
-        | solve_typ_gamma
-        | solve_typ_lgamma].
-  all: try 
-       apply Sized_Word.lift_binop_in_equal_sizes.
+                      | solve_typ_lgamma]
+              | solve_binop_preservation
+              | apply_type_rule;
+                inversion te;
+                subst;
+                eapply t_lop;
+                eauto].
+  - apply exp_weakening_nil.
+    eapply in_type_delta; eauto.
+    assumption.
+  - apply_type_rule.
+    + apply_type_rule; eauto;
+        unify_sizes;
+        first [self_multiple | solve_size_constraint].
+    + replace (sz + (sz' - sz) - sz) with (sz' - sz) by omega.
+      apply_type_rule; eauto.
+      * solve_is_multiple.
+      * omega.
+      * eapply exp_type_succ; eauto.
+  - apply_type_rule.
+   + replace (sz' - sz + sz - sz) with (sz' - sz) by omega.
+     apply_type_rule; eauto.
+     * solve_is_multiple.
+     * omega.
+     * eapply exp_type_succ; eauto.
+   + apply_type_rule; eauto;
+       unify_sizes;
+       first [self_multiple | solve_size_constraint].
+  - let tac := (eapply exp_type_succ; eauto) in
+      solve_type_rule_using tac.
+  - let tac := (eapply exp_type_succ; eauto) in
+      solve_type_rule_using tac.
+  - unify_sizes.
+    eapply t_mem.
+Ltac unify_sizes :=
+  repeat match goal with
+         | [ H : _;_|-- exp_int (existT _ ?sz1 _) ::: type_imm ?sz2 |- _] =>
+           tryif unify sz1 sz2 then fail else
+             let Hsz := fresh "Hsz" in
+             apply word_size_in_type in H as Hsz;
+             destruct Hsz
+         | [ H1 : has_size ?v ?sz1, H2 : has_size ?v ?sz2 |- _] =>
+           tryif unify sz1 sz2 then fail else
+             fail 1 "TODO"
+         | [ H1 : has_size ?v ?sz1', H2 : _;_ |-- ?v ::: type_mem _ ?sz2 |- _] =>
+           let Hsz := fresh "Hsz" in
+           pose proof H1 as Hsz;
+           apply has_size_unique with (sz1 := sz2) in Hsz;
+           [|apply types_has_size in H2; assumption];
+           destruct Hsz
+         | [ H : _;_|-- exp_store _ _ _ ?sz1 _ :: type_mem _ ?sz2 |- _] =>
+           tryif unify sz1 sz2 then fail else
+             
+         end.
+
+unify_sizes.
+    eapply t_mem.
   - pose proof in_delta_types as v_types.
     rewrite <- H1 in H0.
     specialize (v_types id5 t v delta5 td H0).
