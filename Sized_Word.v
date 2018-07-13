@@ -52,21 +52,6 @@ simpl.
 reflexivity.
 Qed.
 
-(*
-Definition sw_lift_cmpop (op : forall sz, word sz -> word sz -> word 1)
-           (w1 : sized_word) (w2 : sized_word) : sized_word :=
-  existT word _ (sw_lift_binop_in op w1 w2).
-
-Lemma lift_cmpop_equal_sizes : forall op sz (w1 w2 : word sz),
-    sw_lift_cmpop op (sized w1) (sized w2) = existT _ _ (op sz w1 w2).
-Proof.
-intros op sz w1 w2.
-unfold sw_lift_cmpop.
-rewrite -> lift_binop_in_equal_sizes.
-simpl.
-reflexivity.
-Qed. *)
-
 Definition sw_lift_shiftop_in {A} (op : forall sz , word sz -> nat -> A sz)
            (w1 : sized_word) (w2 : sized_word)
   : A (projT1 w1) :=
