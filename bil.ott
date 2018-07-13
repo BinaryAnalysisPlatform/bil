@@ -314,8 +314,8 @@ formula :: formula_ ::=
  | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
  | nat1 % sz = 0            :: M :: nat_mod_z {{ coq (exists n_, [[nat1]] = n_ * [[sz]]) }}
- | size_of v = sz           :: M :: size_of_v
- {{ coq (has_size [[v]] [[sz]]) }}
+ | compute_type v = t       :: M :: compute_type_of_v
+ {{ coq (compute_type [[v]] = [[t]]) }}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
      {{ coq ([[e1]] = [[e2]]) }}
@@ -363,9 +363,23 @@ Bind Scope bil_exp_scope with exp.
 Reserved Notation "[ es ./ i ]" (at level 70, no associativity).
 Notation "[m: e , w <- w' @ sz ]" := (exp_mem e w w' sz) (at level 79) : bil_exp_scope.
 
-Inductive has_size : exp -> nat -> Prop :=
-  | mem_has_size : forall e w v sz, has_size ([m: e, w <- v @ sz]) sz
-  | unk_has_size : forall str nat sz, has_size (exp_unk str (type_mem nat sz)) sz.
+Definition compute_type (e : exp) : type :=
+  match e with
+  | exp_int w => type_imm (projT1 w)
+  | exp_mem _ w _ sz => type_mem (projT1 w) sz
+  | exp_unk _ t => t
+  | exp_var _ => type_imm 0
+  | exp_letvar _ => type_imm 0
+  | exp_load _ _ _ _ => type_imm 0
+  | exp_store em ea ed sz ev => type_imm 0
+  | exp_binop e1 bop e2 => type_imm 0
+  | exp_unop uop e => type_imm 0
+  | exp_cast c sz e => type_imm 0
+  | exp_let e1 t e2 => type_imm 0
+  | exp_ite e1 e2 e3 => type_imm 0
+  | exp_ext hi lo e => type_imm 0
+  | exp_concat e1 e2 => type_imm 0
+  end.
 
 Fixpoint letsubst (es : exp) (i : lid) (e : exp) : exp :=
   match e with
@@ -637,13 +651,13 @@ defns reduce_exp :: '' ::=
 
  sz' > sz
  succ w = w'
- size_of v = sz
+ compute_type v = mem<nat,sz>
  ------------------------------------------------------------- :: load_word_be
  delta |- v[w,be]:sz' ~> v[w,be]:sz @ (v[w', be]:(sz'-sz))
 
  sz' > sz
  succ w = w'
- size_of v = sz
+ compute_type v = mem<nat,sz>
  -------------------------------------------------------- :: load_word_el
  delta |- v[w,el]:sz' ~> v[w',el]:(sz'-sz) @ (v[w,be]:sz)
 
@@ -669,27 +683,27 @@ defns reduce_exp :: '' ::=
 
  sz' > sz
  succ w = w'
- size_of v = sz
+ compute_type v = mem<nat,sz>
  e1 :=def (v with [w,be]:sz <- high:sz[val])
  ---------------------------------------------------------------------------------- :: store_word_be
  delta |- v with [w,be]:sz' <- val ~> e1 with [w',be]:(sz'-sz) <- low:(sz'-sz)[val]
 
  sz' > sz
  succ w = w'
- size_of v = sz
+ compute_type v = mem<nat,sz>
  e1 :=def (v with [w,el]:sz <- low:sz[val])
  -------------------------------------------------------------------------------- :: store_word_el
  delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
- size_of v = sz'
+ compute_type v = mem<nat,sz'>
  -------------------------------------------------------------- :: store_val
  delta |- v with [num:sz,ed] : sz' <- w' ~> v[num:sz <- w' : sz']
 
- size_of v = sz'
+ compute_type v = mem<nat,sz'>
  ----------------------------------------------------------------------------------------- :: store_un
  delta |- v with [num:sz,ed] : sz' <- unknown[str]:t ~> v[num:sz <- unknown[str]:t : sz']
 
- size_of v = sz
+ compute_type v = mem<nat,sz>
  --------------------------------------------------------------------------------- :: store_un_addr
  delta |- v with [unknown[str]:imm<nat>,ed] : sz' <- v2 ~> unknown[str]:mem<nat,sz>
 
@@ -827,6 +841,7 @@ defns reduce_exp :: '' ::=
  ---------------------------------------- :: concat_lhs
  delta |- e1 @ v2 ~> e1' @ v2
 
+ 
  ---------------------------------------------- :: concat_lhs_un
  delta |- unknown[str]:t @ v2 ~> unknown[str]:t
 

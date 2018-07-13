@@ -1019,11 +1019,11 @@ Ltac solve_typ_gamma :=
   end.
 
 
-Lemma types_has_size : forall g gl v n sz,
+Lemma compute_faithful : forall g gl v t,
     is_val_of_exp v ->
-    g;gl |-- v ::: type_mem n sz -> has_size v sz.
+    g;gl |-- v ::: t -> compute_type v = t.
 Proof.
-  intros g gl v n sz vv vt;
+  intros g gl v t vv vt;
     apply val_closed in vt; [|assumption];
       revert vv vt;
       induction v;
@@ -1035,30 +1035,6 @@ Proof.
       subst;
       constructor.
 Qed.
-
-Ltac destruct_var_eqs_strict :=
-  repeat match goal with
-           [ H : ?a = ?b |- _ ] =>
-           is_var a; is_var b; destruct H
-         end.
-
-
-Lemma has_size_unique : forall v sz1 sz2,
-    has_size v sz1 ->
-    has_size v sz2 -> sz1 = sz2.
-Proof.
-  intros v sz1 sz2 hsz1 hsz2;
-    inversion hsz1;
-    inversion hsz2;
-    destruct_var_eqs_strict;
-    match goal with
-      [ H1 : _ = ?v, H2 : _ = ?v |- _] =>
-      rewrite <- H1 in H2;
-        inversion H2;
-        auto
-    end.
-Qed.
-
 
 Require Import bil.Sized_Word.
 
@@ -1087,15 +1063,27 @@ Ltac unify_sizes :=
            assert (sz = sz') as Hsz by
                (inversion H; reflexivity);
            destruct Hsz
-         | [ H1 : has_size ?v ?sz1, H2 : has_size ?v ?sz2 |- _] =>
-           tryif unify sz1 sz2 then fail else
-             fail 1 "TODO"
-         | [ H1 : has_size ?v ?sz1', H2 : _;_ |-- ?v ::: type_mem _ ?sz2 |- _] =>
-           let Hsz := fresh "Hsz" in
-           pose proof H1 as Hsz;
-           apply has_size_unique with (sz1 := sz2) in Hsz;
-           [|apply types_has_size in H2; assumption];
-           destruct Hsz
+         | [ H1 : compute_type ?v = type_mem ?nat1 ?sz1,
+             H2 : compute_type ?v = type_mem ?nat2 ?sz2 |- _] =>
+           let nateq := fresh in
+           let szeq := fresh in
+           rewrite <- H1 in H2;
+           inversion H2 as [nateq szeq];
+           destruct nateq;
+           destruct szeq;
+           clear H2
+         | [ Hc : compute_type ?v = type_mem ?nat1 ?sz1,
+             Ht : _;_ |-- ?v ::: type_mem ?nat2 ?sz2 |- _] =>
+           let Hc' := fresh Hc in
+           let szeq := fresh in
+           let new := fresh in
+           assert (compute_type v = type_mem nat2 sz2) as Hc' by
+                 (apply compute_faithful in Ht; assumption);
+           rewrite Hc in Hc';
+           injection Hc';
+           repeat (let eq := fresh in
+                   intro eq; destruct eq);
+           clear Hc'
          end.
 
 Lemma in_type_delta : forall d i t v, type_delta d -> In (var_var i t,v) d -> nil;nil |-- v ::: t.
@@ -1254,23 +1242,15 @@ Proof.
     eapply in_type_delta; eauto.
     assumption.
   - apply_type_rule.
-    + apply_type_rule; eauto;
-        unify_sizes;
-        first [self_multiple | solve_size_constraint].
+    + solve_type_rule.
     + replace (sz + (sz' - sz) - sz) with (sz' - sz) by omega.
-      apply_type_rule; eauto.
-      * solve_is_multiple.
-      * omega.
-      * eapply exp_type_succ; eauto.
+      let tac := (first [omega | eapply exp_type_succ; eauto]) in
+      solve_type_rule_using tac.
   - apply_type_rule.
    + replace (sz' - sz + sz - sz) with (sz' - sz) by omega.
-     apply_type_rule; eauto.
-     * solve_is_multiple.
-     * omega.
-     * eapply exp_type_succ; eauto.
-   + apply_type_rule; eauto;
-       unify_sizes;
-       first [self_multiple | solve_size_constraint].
+     let tac := (first [omega | eapply exp_type_succ; eauto]) in
+      solve_type_rule_using tac.
+   + solve_type_rule.
   - let tac := (eapply exp_type_succ; eauto) in
       solve_type_rule_using tac.
   - let tac := (eapply exp_type_succ; eauto) in
@@ -1325,14 +1305,21 @@ Proof.
       end.
   - unify_sizes.
     solve_type_rule.
-  - 
-    inversion H4.
-    subst.
-    match goal with
-      
-
-
+  - unify_sizes.
     solve_type_rule.
+  - unify_sizes.
+    solve_type_rule.
+  - unify_sizes.
+    solve_type_rule.
+  - unify_sizes.
+    solve_type_rule.
+  - unify_sizes.
+    solve_type_rule.
+  - unify_sizes.
+    solve_type_rule.
+  - unify_sizes.
+    solve_type_rule.
+ 
 
   - pose proof in_delta_types as v_types.
     rewrite <- H1 in H0.
