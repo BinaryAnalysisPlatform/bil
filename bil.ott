@@ -315,7 +315,7 @@ formula :: formula_ ::=
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
  | nat1 % sz = 0            :: M :: nat_mod_z {{ coq (exists n_, [[nat1]] = n_ * [[sz]]) }}
  | size_of v = sz           :: M :: size_of_v
- {{ coq (has_size v sz) }}
+ {{ coq (has_size [[v]] [[sz]]) }}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
      {{ coq ([[e1]] = [[e2]]) }}
@@ -685,12 +685,13 @@ defns reduce_exp :: '' ::=
  -------------------------------------------------------------- :: store_val
  delta |- v with [num:sz,ed] : sz' <- w' ~> v[num:sz <- w' : sz']
 
+ size_of v = sz'
  ----------------------------------------------------------------------------------------- :: store_un
  delta |- v with [num:sz,ed] : sz' <- unknown[str]:t ~> v[num:sz <- unknown[str]:t : sz']
 
  size_of v = sz
  --------------------------------------------------------------------------------- :: store_un_addr
- delta |- v with [unknown[str]:imm<nat>,ed] : sz <- v2 ~> unknown[str]:mem<nat,sz'>
+ delta |- v with [unknown[str]:imm<nat>,ed] : sz' <- v2 ~> unknown[str]:mem<nat,sz>
 
  delta |- e1 ~> e1'
  --------------------------------------------------------- :: let_step
