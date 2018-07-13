@@ -1071,12 +1071,22 @@ Proof.
 Qed.
 
 Ltac unify_sizes :=
-  repeat match goal with
+  repeat multimatch goal with
          | [ H : _;_|-- exp_int (existT _ ?sz1 _) ::: type_imm ?sz2 |- _] =>
            tryif unify sz1 sz2 then fail else
              let Hsz := fresh "Hsz" in
              apply word_size_in_type in H as Hsz;
              destruct Hsz
+         | [ H : _;_|-- exp_int (@sized ?sz _) ::: type_imm ?sz' |- _] =>
+           let Hsz := fresh "Hsz" in
+           assert (sz = sz') as Hsz by
+               (inversion H; reflexivity);
+           destruct Hsz
+         | [ H : _;_ |-- exp_unk _ (type_imm ?sz) ::: type_imm ?sz'|- _] =>
+           let Hsz := fresh "Hsz" in
+           assert (sz = sz') as Hsz by
+               (inversion H; reflexivity);
+           destruct Hsz
          | [ H1 : has_size ?v ?sz1, H2 : has_size ?v ?sz2 |- _] =>
            tryif unify sz1 sz2 then fail else
              fail 1 "TODO"
@@ -1195,6 +1205,10 @@ Ltac solve_type_rule_using tac :=
   apply_type_rule; eauto;
   solve [ solve_is_multiple
         | solve_size_constraint
+        | constructor
+        | solve_type_wf
+        | solve_typ_gamma
+        | solve_typ_lgamma
         | tac
         | solve_type_rule_using tac].
 
@@ -1262,30 +1276,64 @@ Proof.
   - let tac := (eapply exp_type_succ; eauto) in
       solve_type_rule_using tac.
   - unify_sizes.
-    eapply t_mem.
-Ltac unify_sizes :=
-  repeat match goal with
-         | [ H : _;_|-- exp_int (existT _ ?sz1 _) ::: type_imm ?sz2 |- _] =>
-           tryif unify sz1 sz2 then fail else
-             let Hsz := fresh "Hsz" in
-             apply word_size_in_type in H as Hsz;
-             destruct Hsz
-         | [ H1 : has_size ?v ?sz1, H2 : has_size ?v ?sz2 |- _] =>
-           tryif unify sz1 sz2 then fail else
-             fail 1 "TODO"
-         | [ H1 : has_size ?v ?sz1', H2 : _;_ |-- ?v ::: type_mem _ ?sz2 |- _] =>
-           let Hsz := fresh "Hsz" in
-           pose proof H1 as Hsz;
-           apply has_size_unique with (sz1 := sz2) in Hsz;
-           [|apply types_has_size in H2; assumption];
-           destruct Hsz
-         | [ H : _;_|-- exp_store _ _ _ ?sz1 _ :: type_mem _ ?sz2 |- _] =>
-           tryif unify sz1 sz2 then fail else
-             
-         end.
+    solve_type_rule.
+  - match goal with
+      [ H : _;_ |-- exp_unk _ ?t ::: type_imm ?sz |- _] =>
+      destruct t; try now inversion H
+    end.
+    unify_sizes.
+    solve_type_rule.
+  - unify_sizes.
+    solve_type_rule.
+  - (*TODO: requires Lemma subst_type_exp *)
+    give_up.
+  - unfold sw_lt.
+      repeat match goal with
+             | [ w : word |- _] => destruct w
+             end.
+      unify_sizes.
+      unfold sw_lift_cmpop.
+      simpl.
+      unfold sw_lift_cmpop_in.
+      match goal with
+        |- context[eq_nat_decide ?x ?x] =>
+        let n := fresh "n" in
+        destruct (eq_nat_decide x x) as [| n];
+          [|elim n; apply eq_nat_refl]
+      end.
+      match goal with
+        |- context[if ?c then _ else _] =>
+        destruct c; solve_type_rule
+      end.
+  - unfold sw_slt.
+      repeat match goal with
+             | [ w : word |- _] => destruct w
+             end.
+      unify_sizes.
+      unfold sw_lift_cmpop.
+      simpl.
+      unfold sw_lift_cmpop_in.
+      match goal with
+        |- context[eq_nat_decide ?x ?x] =>
+        let n := fresh "n" in
+        destruct (eq_nat_decide x x) as [| n];
+          [|elim n; apply eq_nat_refl]
+      end.
+      match goal with
+        |- context[if ?c then _ else _] =>
+        destruct c; solve_type_rule
+      end.
+  - unify_sizes.
+    solve_type_rule.
+  - 
+    inversion H4.
+    subst.
+    match goal with
+      
 
-unify_sizes.
-    eapply t_mem.
+
+    solve_type_rule.
+
   - pose proof in_delta_types as v_types.
     rewrite <- H1 in H0.
     specialize (v_types id5 t v delta5 td H0).
