@@ -193,10 +193,10 @@ grammar
         {{ coq (existT _ _ (combine (projT2 [[w1]]) (projT2 [[w2]]))) }}
    | ext word ~ hi : sz1 ~ lo : sz2           :: S    :: extend_extract
         {{ com -- extract/extend }}
-        {{ coq (ext [[word]] [[hi]] [[lo]]) }}
+        {{ coq (ext [[word]] [[sz1]] [[sz2]]) }}
    | exts word ~ hi : sz1 ~ lo : sz2         :: S    :: extend_extract_signed
         {{ com -- signed extract/extend }}
-        {{ coq (ext_signed [[word]] [[hi]] [[lo]]) }}
+        {{ coq (ext_signed [[word]] [[sz1]] [[sz2]]) }}
 
 
  bop :: binop_ ::= {{ coq-equality }}
@@ -841,12 +841,13 @@ defns reduce_exp :: '' ::=
  ---------------------------------------- :: concat_lhs
  delta |- e1 @ v2 ~> e1' @ v2
 
- 
- ---------------------------------------------- :: concat_lhs_un
- delta |- unknown[str]:t @ v2 ~> unknown[str]:t
+ compute_type v2 = imm<sz2>
+ ----------------------------------------------------------------- :: concat_lhs_un
+ delta |- unknown[str]:imm<sz1> @ v2 ~> unknown[str]:imm<sz1 +sz2>
 
- ---------------------------------------------- :: concat_rhs_un
- delta |- v1 @ unknown[str]:t ~> unknown[str]:t
+ compute_type v1 = imm<sz1>
+ ---------------------------------------------------------------- :: concat_rhs_un
+ delta |- v1 @ unknown[str]:imm<sz2> ~> unknown[str]:imm<sz1 +sz2>
 
  ---------------------------------------- :: concat
  delta |- w1 @ w2 ~> w1 .@ w2
@@ -856,8 +857,8 @@ defns reduce_exp :: '' ::=
  delta |- extract:sz1:sz2[e] ~> extract:sz1:sz2[e']
 
 
- ---------------------------------------------------------- :: extract_un
- delta |- extract:sz1:sz2[unknown[str]:t] ~> unknown[str]:t
+ ------------------------------------------------------------------------------ :: extract_un
+ delta |- extract:sz1:sz2[unknown[str]:t] ~> unknown[str]:imm<(sz1 - sz2) + 1>
 
  ------------------------------------------------------ :: extract
  delta |- extract:sz1:sz2[w] ~> ext w ~hi:sz1 ~lo:sz2
