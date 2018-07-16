@@ -294,9 +294,9 @@ defns typing_exp :: '' ::=
  sz > 0
  nat > 0
  G |- v :: mem<nat,sz>
- G |- v :: imm<sz>
+ G |- v' :: imm<sz>
  ---------------------------------------------------------- :: mem
- G |- v[num1:nat <- v : sz] :: mem<nat,sz>
+ G |- v[num1:nat <- v' : sz] :: mem<nat,sz>
 
 
  sz' % sz = 0
