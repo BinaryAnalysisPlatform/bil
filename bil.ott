@@ -37,6 +37,8 @@ grammar
    {{ com -- a variable }}
    | word                                       ::      :: int
    {{ com -- an immediate value }}
+   | e [ w <- v' : sz ]                         ::      :: mem
+   {{ com -- a memory value }}
    | e1 [ e2 , endian ] : nat                   ::      :: load
    {{ com -- load a value from address $e_2$ at storage $e_1$}}
    | e1 with [ e2 , endian ] : nat <- e3        ::      :: store
@@ -64,13 +66,15 @@ grammar
    | id : type                                  :: S    :: var
 
  val,v :: val_ ::=
-   | word                                      :: M    :: imm
-   | v1 with [ v2 , endian ] : nat <- v3       :: M    :: mem
-   | unknown [ string ] : type                 :: M    :: bot
+   | word                                      ::      :: imm
+   | v [ w <- v' : sz ]                        ::      :: mem
+   | unknown [ string ] : type                 ::      :: bot
 
- word,w :: word_ ::=
-   | num : nat                                 ::     :: word
-   | (w)                                        :: S    :: paren
+ word,w :: word_ ::= {{coq sized_word}}
+   | num : nat                                 :: M    :: word
+   {{ coq (sized (natToWord [[nat]] [[num]])) }}
+   | ( w )                                        :: S    :: paren
+   {{ coq ([[w]])}}
    | 1 : nat                                   :: S    :: one
    | true                                       :: S    :: true
    {{ com -- sugar for 1:1 }}
@@ -186,7 +190,7 @@ grammar
    | high                                       ::      :: high {{ com -- extract high bits}}
    | signed                                     ::      :: signed
    {{ com -- extend with sign bit}}
-   | unsigned                                   ::      :: unsinged
+   | unsigned                                   ::      :: unsigned
    {{ com -- extend with zero}}
 
  type,t :: type_ ::=
@@ -216,6 +220,9 @@ formula :: formula_ ::=
  | nat1 > nat2              :: M :: nat_gt {{ coq ([[nat1]] > [[nat2]])}}
  | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
+ | nat1 % sz = 0            :: M :: nat_mod_z {{ coq (exists n_, [[nat1]] = n_ * [[sz]]) }}
+ | compute_type v = t       :: M :: compute_type_of_v
+ {{ coq (compute_type [[v]] = [[t]]) }}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
  | ( var , val ) isin delta   :: M :: in_env
@@ -245,6 +252,18 @@ terminals :: terminals_ ::=
 subrules
   val <:: exp
 
+defns typing_type :: '' ::=
+ defn t is ok :: :: type_wf :: twf_ by
+
+ sz > 0
+ -------------- :: imm
+ imm<sz> is ok
+
+ nat > 0
+ sz > 0
+ -------------- :: mem
+ mem<nat,sz> is ok
+
 defns typing_gamma :: '' ::=
  defn G is ok :: :: typ_gamma :: tg_ by
 
@@ -252,6 +271,7 @@ defns typing_gamma :: '' ::=
  [] is ok
 
  id notin dom(G)
+ t is ok
  G is ok
  --------------- :: cons
  (G, id:t) is ok
@@ -265,20 +285,34 @@ defns typing_exp :: '' ::=
  G |- id:t :: t
 
  G is ok
+ sz > 0
  ----------------- :: int
- G |- num:sz :: imm<sz>
+ G; Gl |- num:sz :: imm<sz>
 
- G |- e1 :: mem<nat,sz>
- G |- e2 :: imm<nat>
+
+ sz > 0
+ nat > 0
+ G; Gl |- e :: mem<nat,sz>
+ G; Gl |- v :: imm<sz>
+ ---------------------------------------------------------- :: mem
+ G; Gl |- e[num1:nat <- v : sz] :: mem<nat,sz>
+
+
+ sz' % sz = 0
+ sz' > 0
+ G; Gl |- e1 :: mem<nat,sz>
+ G; Gl |- e2 :: imm<nat>
  -------------------------- :: load
- G |- e1 [e2, ed] : sz :: imm<sz>
+ G; Gl |- e1 [e2, ed] : sz' :: imm<sz'>
 
 
- G |- e1 :: mem<nat,sz>
- G |- e2 :: imm<nat>
- G |- e3 :: imm<sz>
+ sz' % sz = 0
+ sz' > 0
+ G; Gl |- e1 :: mem<nat,sz>
+ G; Gl |- e2 :: imm<nat>
+ G; Gl |- e3 :: imm<sz'>
  --------------------------------------------- :: store
- G |- e1 with [e2, ed]:sz <- e3 :: mem<nat,sz>
+ G; Gl |- e1 with [e2, ed]:sz' <- e3 :: mem<nat,sz>
 
 
  G |- e1 :: imm<sz>
@@ -296,7 +330,8 @@ defns typing_exp :: '' ::=
  G |- uop e1 :: imm<sz>
 
 
- G |- e :: imm<nat>
+ sz > 0
+ G; Gl |- e :: imm<nat>
  --------------------- :: cast
  G |- cast:sz[e] :: imm<sz>
 
@@ -306,6 +341,7 @@ defns typing_exp :: '' ::=
  ------------------------ :: let
  G |- let id:t = e1 in e2 :: t'
 
+ t is ok
  G is ok
  ------------------------- :: unknown
  G |- unknown[str]:t :: t
@@ -434,36 +470,33 @@ defns reduce_exp :: '' ::=
  ------------------------------------- :: load_step_mem
  delta |- e1[v2,ed]:sz ~> e1'[v2,ed]:sz
 
-
  ------------------------------------------------------ :: load_byte
- delta |- (v1 with [w,ed]:8 <- num:8)[w,ed']:8 ~> num:8
-
- ------------------------------------------------------------------------------ :: load_un_addr
- delta |- (v1 with [unknown[str]:t,ed]:8 <- v2)[v3,ed]:8 ~> unknown[str]:imm<8>
+ delta |- v[w <- w':sz][w,ed']:sz ~> w'
 
  w1 <> w2
- ---------------------------------------------------------- :: load_rec
- delta |- (v1 with [w1,ed]:8 <- v3)[w2,ed]:8 ~> v1[w2,ed]:8
+ ----------------------------------------------------------- :: load_byte_from_next
+ delta |- v[w1 <- w':sz][w2,ed]:sz ~> v[w2,ed]:sz
 
  ---------------------------------------------------------- :: load_un_mem
  delta |- (unknown[str]:t)[v,ed]:sz ~> unknown[str]:imm<sz>
 
+ sz' > sz
  succ w = w'
- --------------------------------------------------- :: load_word_be
- delta |- v[w,be]:sz ~> v[w,be]:8 @ v[w', be]:(sz-8)
+ compute_type v = mem<nat,sz>
+ ------------------------------------------------------------- :: load_word_be
+ delta |- v[w,be]:sz' ~> v[w,be]:sz @ (v[w', be]:(sz'-sz))
 
+ sz' > sz
  succ w = w'
- --------------------------------------------------- :: load_word_el
- delta |- v[w,el]:sz ~> v[w',el]:(sz-8) @ v[w,be]:8
-
-
+ compute_type v = mem<nat,sz>
+ -------------------------------------------------------- :: load_word_el
+ delta |- v[w,el]:sz' ~> v[w',el]:(sz'-sz) @ (v[w,be]:sz)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% STORE                                             %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
- 
 
  delta |- e3 ~> e3'
  ------------------------------------------------------------------------- :: store_step_val
@@ -479,16 +512,31 @@ defns reduce_exp :: '' ::=
  ------------------------------------------------------------------------- :: store_step_mem
  delta |- e1 with [v2,ed]:sz <- v3 ~> e1' with [v2,ed] : sz <- v3
 
+ sz' > sz
  succ w = w'
- e1 :=def (v with [w,be]:8 <- high:8[val])
- -------------------------------------------------------------------- :: store_word_be
- delta |- v with [w,be]:sz <- val ~> e1 with [w',be]:(sz-8) <- low:(sz-8)[val]
+ compute_type v = mem<nat,sz>
+ e1 :=def (v with [w,be]:sz <- high:sz[val])
+ ---------------------------------------------------------------------------------- :: store_word_be
+ delta |- v with [w,be]:sz' <- val ~> e1 with [w',be]:(sz'-sz) <- low:(sz'-sz)[val]
 
+ sz' > sz
  succ w = w'
- e1 :=def (v with [w,el]:8 <- low:8[val])
- -------------------------------------------------------------------- :: store_word_el
- delta |- v with [w,el]:sz <- val ~> e1 with [w',el]:(sz-8) <- high:(sz-8)[val]
+ compute_type v = mem<nat,sz>
+ e1 :=def (v with [w,el]:sz <- low:sz[val])
+ -------------------------------------------------------------------------------- :: store_word_el
+ delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
+ compute_type v = mem<nat,sz'>
+ -------------------------------------------------------------- :: store_val
+ delta |- v with [num:sz,ed] : sz' <- w' ~> v[num:sz <- w' : sz']
+
+ compute_type v = mem<nat,sz'>
+ ----------------------------------------------------------------------------------------- :: store_un
+ delta |- v with [num:sz,ed] : sz' <- unknown[str]:t ~> v[num:sz <- unknown[str]:t : sz']
+
+ compute_type v = mem<nat,sz>
+ --------------------------------------------------------------------------------- :: store_un_addr
+ delta |- v with [unknown[str]:imm<nat>,ed] : sz' <- v2 ~> unknown[str]:mem<nat,sz>
 
  delta |- e1 ~> e1'
  ------------------------------------------------ :: let_step
@@ -624,11 +672,13 @@ defns reduce_exp :: '' ::=
  ---------------------------------------- :: concat_lhs
  delta |- e1 @ v2 ~> e1' @ v2
 
- ---------------------------------------------- :: concat_lhs_un
- delta |- unknown[str]:t @ v2 ~> unknown[str]:t
+ compute_type v2 = imm<sz2>
+ ----------------------------------------------------------------- :: concat_lhs_un
+ delta |- unknown[str]:imm<sz1> @ v2 ~> unknown[str]:imm<sz1 +sz2>
 
- ---------------------------------------------- :: concat_rhs_un
- delta |- v1 @ unknown[str]:t ~> unknown[str]:t
+ compute_type v1 = imm<sz1>
+ ---------------------------------------------------------------- :: concat_rhs_un
+ delta |- v1 @ unknown[str]:imm<sz2> ~> unknown[str]:imm<sz1 +sz2>
 
  ---------------------------------------- :: concat
  delta |- w1 @ w2 ~> w1 .@ w2
@@ -638,8 +688,8 @@ defns reduce_exp :: '' ::=
  delta |- extract:sz1:sz2[e] ~> extract:sz1:sz2[e']
 
 
- ---------------------------------------------------------- :: extract_un
- delta |- extract:sz1:sz2[unknown[str]:t] ~> unknown[str]:t
+ ------------------------------------------------------------------------------ :: extract_un
+ delta |- extract:sz1:sz2[unknown[str]:t] ~> unknown[str]:imm<(sz1 - sz2) + 1>
 
  ------------------------------------------------------ :: extract
  delta |- extract:sz1:sz2[w] ~> ext w ~hi:sz1 ~lo:sz2
