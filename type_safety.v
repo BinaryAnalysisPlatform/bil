@@ -654,7 +654,7 @@ Fixpoint max_lfv (e_5:exp) : lid  :=
   | (exp_var var5) => 0
   | (exp_letvar lid5) => S lid5
   | (exp_int word5) => 0
-  | (exp_mem e w v' sz) => max_lfv e
+  | (exp_mem v w v' sz) => (max (max_lfv v) (max_lfv v'))
   | (exp_load e1 e2 endian5 nat5) => max (max_lfv e1) (max_lfv e2)
   | (exp_store e1 e2 endian5 nat5 e3) => max (max_lfv e1) (max (max_lfv e2) (max_lfv e3))
   | (exp_binop e1 bop5 e2) => max (max_lfv e1) (max_lfv e2)
@@ -704,9 +704,6 @@ Proof.
     try contradiction;
     let app_tac tac := tac; auto; constructor in
     try do_for_all_exps app_tac.
-  apply t_mem; auto.
-  destruct vv.
-  auto.
 Qed.
 
 Lemma exp_let_strengthening : forall g lg lg' e t,
@@ -752,14 +749,6 @@ Proof.
       inversion H.
       rewrite H4 in H3.
       eauto.
-  - apply t_mem; auto.
-    eapply IHe1; eauto.
-    eapply IHe2; eauto.
-    eapply val_closed in H3.
-    apply max_lfv_length_env in H3.
-    simpl in H3.
-    omega.
-    eauto.
 Qed.
 
 Lemma exp_letvar_strengthening2 : forall g gl gl' lid t,
