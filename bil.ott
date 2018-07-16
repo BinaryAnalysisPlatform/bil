@@ -37,7 +37,7 @@ grammar
    {{ com -- a variable }}
    | word                                       ::      :: int
    {{ com -- an immediate value }}
-   | e [ w <- v' : sz ]                         ::      :: mem
+   | v [ w <- v' : sz ]                         ::      :: mem
    {{ com -- a memory value }}
    | e1 [ e2 , endian ] : nat                   ::      :: load
    {{ com -- load a value from address $e_2$ at storage $e_1$}}
@@ -223,6 +223,7 @@ formula :: formula_ ::=
  | nat1 % sz = 0            :: M :: nat_mod_z {{ coq (exists n_, [[nat1]] = n_ * [[sz]]) }}
  | compute_type v = t       :: M :: compute_type_of_v
  {{ coq (compute_type [[v]] = [[t]]) }}
+ {{ tex [[type]] ( [[v]] ) = [[t]] }}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
  | ( var , val ) isin delta   :: M :: in_env
@@ -284,35 +285,35 @@ defns typing_exp :: '' ::=
  ----------------- :: var
  G |- id:t :: t
 
- G is ok
  sz > 0
+ G is ok
  ----------------- :: int
- G; Gl |- num:sz :: imm<sz>
+ G |- num:sz :: imm<sz>
 
 
  sz > 0
  nat > 0
- G; Gl |- e :: mem<nat,sz>
- G; Gl |- v :: imm<sz>
+ G |- v :: mem<nat,sz>
+ G |- v :: imm<sz>
  ---------------------------------------------------------- :: mem
- G; Gl |- e[num1:nat <- v : sz] :: mem<nat,sz>
+ G |- v[num1:nat <- v : sz] :: mem<nat,sz>
 
 
  sz' % sz = 0
  sz' > 0
- G; Gl |- e1 :: mem<nat,sz>
- G; Gl |- e2 :: imm<nat>
+ G |- e1 :: mem<nat,sz>
+ G |- e2 :: imm<nat>
  -------------------------- :: load
- G; Gl |- e1 [e2, ed] : sz' :: imm<sz'>
+ G |- e1 [e2, ed] : sz' :: imm<sz'>
 
 
  sz' % sz = 0
  sz' > 0
- G; Gl |- e1 :: mem<nat,sz>
- G; Gl |- e2 :: imm<nat>
- G; Gl |- e3 :: imm<sz'>
+ G |- e1 :: mem<nat,sz>
+ G |- e2 :: imm<nat>
+ G |- e3 :: imm<sz'>
  --------------------------------------------- :: store
- G; Gl |- e1 with [e2, ed]:sz' <- e3 :: mem<nat,sz>
+ G |- e1 with [e2, ed]:sz' <- e3 :: mem<nat,sz>
 
 
  G |- e1 :: imm<sz>
@@ -331,7 +332,7 @@ defns typing_exp :: '' ::=
 
 
  sz > 0
- G; Gl |- e :: imm<nat>
+ G |- e :: imm<nat>
  --------------------- :: cast
  G |- cast:sz[e] :: imm<sz>
 
