@@ -200,26 +200,11 @@ Ltac find_typed t :=
   end.
 
 Ltac do_for_all_exps tac :=
-  first [ let app_tac := (apply t_letvarS) in tac app_tac
-        | let app_tac := (apply t_letvarO) in tac app_tac
-        | let app_tac := (apply t_var) in tac app_tac
-        | let app_tac := (apply t_int) in tac app_tac
-        | let app_tac := (apply t_unknown) in tac app_tac
-        | let app_tac := (apply t_mem) in tac app_tac
-        | let app_tac := (eapply t_load) in tac app_tac
-        | let app_tac := (eapply t_store) in tac app_tac
+  first [let app_tac := (econstructor) in tac app_tac
         | let bop5 := find_typed bop in
           destruct bop5;
           first [ let app_tac := (apply t_aop) in tac app_tac
-                | let app_tac := (eapply t_lop) in tac app_tac]
-        | let app_tac := (apply t_aop) in tac app_tac
-        | let app_tac := (eapply t_lop) in tac app_tac
-        | let app_tac := (apply t_uop) in tac app_tac
-        | let app_tac := (eapply t_cast) in tac app_tac
-        | let app_tac := (eapply t_let) in tac app_tac
-        | let app_tac := (eapply t_ite) in tac app_tac
-        | let app_tac := (eapply t_extract) in tac app_tac
-        | let app_tac := (eapply t_concat) in tac app_tac  ].
+                | let app_tac := (eapply t_lop) in tac app_tac] ].
 
 Ltac apply_concat_rule :=
   let rewrite_for_concat sz1 sz2 :=
@@ -273,7 +258,19 @@ Ltac apply_type_rule :=
       try match goal with [bop5 : bop |- _] => destruct bop5 end;
       apply t_aop || eapply t_lop || fail "could not use t_aop or t_lop"
     | exp_unop => apply t_uop || fail "could not use t_uop"
-    | exp_cast => eapply t_cast || fail "could not use t_cast"
+    | exp_cast =>
+      destruct_all cast;
+      let cast := match e with context[exp_cast ?c] => c end in
+      match cast with
+      | cast_high =>
+        eapply t_cast_narrow
+      | cast_low =>
+        eapply t_cast_narrow
+      | cast_signed =>
+        eapply t_cast_widen
+      | cast_unsigned =>
+        eapply t_cast_widen
+      end || fail "could not apply cast rule; TODO: improve"
     | exp_let => apply t_let || fail "could not use t_let"
     | exp_unk => apply t_unknown || fail "could not use t_unknown"
     | exp_ite => apply t_ite || fail "could not use t_ite"
@@ -290,17 +287,13 @@ Proof.
   generalize dependent g.
   induction et;
     intros g HeqG tGw;
-    try constructor; auto.
+    try now (econstructor; eauto).
   - rewrite HeqG in H.
     apply in_app_or in H.
+    constructor; auto.
     apply in_or_app.
-    destruct H.
-    + left; assumption.
+    destruct H; auto; auto.
     + right; apply in_or_app; right; assumption.
-  -  eapply t_load; auto; auto.
-  - eapply t_lop; auto.
-  - eapply t_cast; auto.
-  - eapply t_extract; auto.
 Qed.
 
 Local Open Scope bil_exp_scope.
@@ -491,6 +484,9 @@ Ltac solve_typ_lgamma :=
              rewrite Heq in H
            | [ H : typ_lgamma ?G, Heq :  _ ++ _ = ?G |- _] =>
              rewrite Heq in H
+           | [H : typ_lgamma (_ :: _) |- _] =>
+             inversion H;
+             clear H
          end;
   simpl;
   repeat match goal with
@@ -532,6 +528,7 @@ Proof.
         t;eauto; apply typ_lgamma_app; auto
     in
     try solve [do_for_all_exps app_tac].
+
   - apply t_let;
       [ apply IHe1;
         assumption
@@ -1177,7 +1174,8 @@ Ltac solve_is_multiple :=
   solve [self_multiple | sub_n_multiple].
 
 Ltac solve_type_rule_using tac :=
-  apply_type_rule; eauto;
+  apply_type_rule;
+  try eassumption; eauto;
   solve [ solve_is_multiple
         | solve_size_constraint
         | constructor
@@ -1193,6 +1191,107 @@ Ltac destruct_all typ :=
   repeat match goal with
          | [ e : typ |- _] => destruct e
          end.
+
+Lemma lift_as_above_m : forall e n, lift_above n e = lift_above_m 1 n e.
+  intros e n.
+  rewrite <- lift_above_above_m.
+  rewrite lift_above_0.
+  reflexivity.
+Qed.
+
+Lemma let_closed_lift : forall g gl e t,
+    g;gl |-- e ::: t -> lift_above (length gl) e = e.
+Proof.
+  intros g gl e; revert gl;
+    induction e using exp_ind_rec_lid;
+    intros gl tt et;
+    simpl;
+    auto;
+    inversion et;
+    subst;
+    f_equal;
+    try match goal with
+          [ H : forall gl t, _ -> lift_above (length gl) ?e = ?e
+                             |- lift_above _ ?e = ?e] =>
+          eapply H; eassumption
+        end.
+  - simpl.
+    destruct (lt_dec (S lid5) (S (length Gl))).
+    reflexivity.
+    elim n.
+    apply max_lfv_length_env in H3.
+    simpl in H3.
+    omega.
+  - apply IHe2 with (gl := t::gl) (t := tt).
+    assumption.
+Qed.
+
+ Lemma letsubst_type : forall g gl gl' e t e' t',
+      g;nil |-- e' ::: t' ->
+      g;gl ++ (t'::gl') |-- lift_above (length gl + 1) e ::: t ->
+        g;gl++gl' |-- ([e'./length gl]e) ::: t.
+    Proof.
+      intros g gl gl'.
+      induction e;
+        intros tt e' t' e't et;
+        inversion et;
+        subst.
+      - econstructor; auto.
+        solve_typ_lgamma.
+      - destruct gl, lid5.
+        simpl.
+        simpl in H; inversion H; subst.
+        eapply exp_let_weakening1 in e't.
+        simpl in e't.
+        eassumption.
+        solve_typ_lgamma.
+        simpl.
+        inversion H; subst.
+        simpl in H0; inversion H0.
+        simpl.
+        simpl in et.
+        inversion H.
+        subst.
+        solve_type_rule.
+        simpl in H0.
+        destruct (lt_dec (S lid5) (S (length gl + 1))); inversion H0.
+      - destruct gl, lid5.
+        simpl.
+        simpl in H; inversion H; subst.
+        eapply exp_let_weakening1 in e't.
+        simpl in e't.
+    (*    eassumption.
+        solve_typ_lgamma.
+        simpl.
+        inversion H; subst.
+        simpl in H0; inversion H0.
+        simpl.
+        simpl in et.
+        inversion H.
+        subst.
+        solve_type_rule.
+        simpl in H0.
+        destruct (lt_dec (S lid5) (S (length gl + 1))); inversion H0.
+
+      - destruct gl.
+        simpl.
+        simpl in et.
+        inversion et.
+        subst.
+        eapply exp_let_weakening1 in e't.
+        simpl in e't.
+        eassumption.
+        solve_typ_lgamma.
+        simpl.
+        inversion et.
+        subst.
+        apply t_letvarO.
+        solve_typ_gamma.
+        solve_type_wf.
+        solve_typ_lgamma.
+      - destruct (lt_dec (S lid5) (length gl + 1) ); inversion H0.
+      - *)
+Admitted.
 
 Lemma exp_preservation : forall d e e' t,
     type_delta d ->
@@ -1257,8 +1356,10 @@ Proof.
     solve_type_rule.
   - unify_sizes.
     solve_type_rule.
-  - (*TODO: requires Lemma subst_type_exp *)
-    give_up.
+  - rewrite <- app_nil_l with (l := nil).
+    eapply letsubst_type; try eassumption.
+    simpl.
+    
   - unfold sw_lt.
     destruct_all word.
       unify_sizes.
@@ -1308,26 +1409,117 @@ Proof.
     unfold ext'.
     replace (sz1 - sz2 + 1) with (S sz1 - sz2) by omega.
     solve_type_rule.
-  - destruct_all word.
-    unify_sizes.
-    unfold ext.
-    unfold ext'.
-    assert (type_imm sz = type_imm (S (sz - 1) - 0)).
-    give_up.
-    rewrite H.
+  - destruct_all cast;
+    try match goal with
+      [ H : is_widen_cast_of_cast _ |- _] =>
+      simpl in H; contradiction
+    end;
     solve_type_rule.
-  - unify_sizes.
-    (* TODO: the spec is wrong in this case. Specifically, when sz > sz' *)
-    give_up.
+  - destruct_all cast;
+    try match goal with
+      [ H : is_narrow_cast_of_cast _ |- _] =>
+      simpl in H; contradiction
+    end;
+    solve_type_rule.
+  - destruct_all word.
+    unfold ext;
+      unfold ext'.
+    replace (type_imm sz) with (type_imm (S (sz - 1) - 0))
+        by (f_equal; omega).
+    solve_type_rule.
+  - destruct_all word.
+    unfold ext;
+      unfold ext'.
+    replace (type_imm sz) with (type_imm (S (sz - 1) - 0))
+        by (f_equal; omega).
+    solve_type_rule.
+  - simpl in H2; contradiction.
+  -Lemma ext_high_size : forall sz sz',
+       sz > 0 ->
+       sz' >= sz -> match sz' - sz with
+                | 0 => S (sz' - 1)
+                | S l => sz' - 1 - l
+                end  = sz.
+   Proof.
+     intros sz sz' szgtz sz'gt.
+     simpl.
+     destruct (Nat.eq_dec sz' sz).
+     subst.
+     replace (sz - sz) with 0 by omega.
+     omega.
+     assert (sz' > sz) by omega.
+     replace (sz' - sz) with (S (sz' - sz - 1)) by omega.
+     omega.
+   Qed.
+    unfold ext;
+      unfold ext'.
+    simpl.
+    rewrite <- ext_high_size with (sz := sz) (sz' := sz') at 3.
+    match goal with
+      [|- _;_|-- exp_int (sized ?w') ::: _] =>
+      rewrite <- Word.natToWord_wordToNat with (w := w')
+    end.
+    apply t_int.
+    rewrite ext_high_size.
+    assumption.
+    assumption.
+    inversion H8.
+    subst.
+    assumption.
+    solve_typ_gamma.
+    solve_typ_lgamma.
+    assumption.
+    inversion H8.
+    subst.
+    assumption.
+  - unfold ext_signed.
+    unfold ext'_signed.
+    destruct_all word.
+    simpl.
+    unify_sizes.
+    match goal with
+      [|- _;_|-- exp_int (sized ?w') ::: _] =>
+      rewrite <- Word.natToWord_wordToNat with (w := w')
+    end.
+    replace (type_imm sz) with (type_imm (S (sz - 1) - 0)) by (f_equal; omega).
+    apply t_int.
+    omega.
+    solve_typ_gamma.
+    solve_typ_lgamma.
   - destruct_all word.
     unify_sizes.
     unfold ext_signed.
     unfold ext'_signed.
-    assert (type_imm sz = type_imm (S (sz - 1) - 0)).
-    give_up.
-    rewrite H.
+    replace (type_imm sz) with (type_imm (S (sz - 1) - 0)) by (f_equal; omega).
+    simpl.
+    match goal with
+      [|- _;_|-- exp_int (sized ?w') ::: _] =>
+      rewrite <- Word.natToWord_wordToNat with (w := w')
+    end.
     solve_type_rule.
-
+  - destruct_all word.
+    unify_sizes.
+    unfold ext.
+    unfold ext'.
+    simpl.
+    replace (type_imm sz) with (type_imm (S (sz - 1))) by (f_equal; omega).
+    match goal with
+      [|- _;_|-- exp_int (sized ?w') ::: _] =>
+      rewrite <- Word.natToWord_wordToNat with (w := w')
+    end.
+    solve_type_rule.
+  - destruct_all word.
+    unify_sizes.
+    unfold ext.
+    unfold ext'.
+    simpl.
+    replace (type_imm sz) with (type_imm (S (sz - 1))) by (f_equal; omega).
+    match goal with
+      [|- _;_|-- exp_int (sized ?w') ::: _] =>
+      rewrite <- Word.natToWord_wordToNat with (w := w')
+    end.
+    solve_type_rule.
+Qed?
 
 Lemma type_exp_unique : forall g gl e t,
     g; gl |-- e ::: t -> forall t', g; gl |-- e ::: t' -> t = t'.
@@ -1352,43 +1544,6 @@ Proof.
     reflexivity.
 Qed.
 
-(*
-Lemma subst_inversion : forall es x e,
-    e <> exp_letvar x -> ~ In x (lfv_exp es) ->
-    (forall y, [es./x]e = exp_var y -> e = exp_var y) /\
-    (forall y, [es./x]e = exp_letvar y -> e = exp_letvar y /\ x <> y) /\
-    (forall w, [es./x]e = exp_int w -> e = exp_int w) /\
-    (forall e1 e2 ed sz, [es./x]e = exp_load ([es./x]e1) ([es./x]e2) ed sz ->
-                         e = exp_load e1 e2 ed sz) /\
-    (forall e1 e2 ed sz e3, [es./x]e = exp_store ([es./x]e1) ([es./x]e2) ed sz ([es./x]e3) ->
-                            e = exp_store e1 e2 ed sz e3) /\
-    (forall e1 op e2, [es./x]e = exp_binop ([es./x]e1) op ([es./x]e2) -> e = exp_binop e1 op e2) /\
-    (forall op e1, [es./x]e = exp_unop op [es./x]e1 -> e = exp_unop op e1) /\
-    (forall c sz e1, [es./x]e = exp_cast c sz [es./x]e1 -> e = exp_cast c sz e1) /\
-    (forall e1 e2, [es./x]e = exp_let x [es./x]e1 e2 -> e = exp_let x e1 e2 ) /\
-    (forall y e1 e2, [es./x]e = exp_let y [es./x]e1 [es./x]e2 -> x <> y -> e = exp_let y e1 e2 ) /\
-    (forall str t, [es./x]e = exp_unk str t -> e = exp_unk str t) /\
-    (forall e1 e2 e3, [es./x]e = exp_ite [es./x]e1 [es./x]e2 [es./x]e3 -> e = exp_ite e1 e2 e3) /\
-    (forall sz1 sz2 e1, [es./x]e = exp_ext sz1 sz2 [es./x]e1 -> e = exp_ext sz1 sz2 e1) /\
-    (forall e1 e2, [es./x]e = exp_concat [es./x]e1 [es./x]e2 -> e = exp_concat e1 e2).
-Proof.
-  intros es x e enl nisl.
-  repeat constructor; induction e; simpl.
-  all: try solve [try destruct (eq_letvar letvar5 x); intros; inversion H;
-                  try first [reflexivity
-                            | elim enl; f_equal; assumption]].
-  simpl in H.
-  destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
-  assumption.
-  simpl in H.
-  destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
-  intro.
-  inversion H.
-  elim n.
-  rewrite H0.
-  assumption.
-Admitted.
-*)
 (*
   intros.
   inversion H.

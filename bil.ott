@@ -264,6 +264,14 @@ grammar
    | unsigned                                   ::      :: unsigned
    {{ com -- extend with zero}}
 
+ widen_cast :: wcast_ ::=
+   | signed                                     ::      :: signed
+   | unsigned                                   ::      :: unsigned
+
+ narrow_cast :: ncast_ ::=
+   | low                                        ::      :: low
+   | high                                       ::      :: high
+
  type,t :: type_ ::= {{ coq-equality }}
    | imm < sz >                                 ::      :: imm
    {{ com -- immediate of size $sz$}}
@@ -350,6 +358,8 @@ terminals :: terminals_ ::=
 
 subrules
   val <:: exp
+  widen_cast <:: cast
+  narrow_cast <:: cast
 
 substitutions
         single exp var :: subst
@@ -504,12 +514,17 @@ defns typing_exp :: '' ::=
  ---------------------------------- :: uop
  G; Gl |- uop e1 :: imm<sz>
 
+ sz > 0
+ sz >= nat
+ G; Gl |- e :: imm<nat>
+ ------------------------------------- :: cast_widen
+ G; Gl |- widen_cast:sz[e] :: imm<sz>
 
  sz > 0
+ nat >= sz
  G; Gl |- e :: imm<nat>
- --------------------- :: cast
- G; Gl |- cast:sz[e] :: imm<sz>
-
+ ------------------------------------- :: cast_narrow
+ G; Gl |- narrow_cast:sz[e] :: imm<sz>
 
  G; Gl |- e1  :: t
  G; Gl,t |- e2 :: t'
@@ -873,15 +888,15 @@ defns reduce_exp :: '' ::=
  delta |- low:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
 
 
- ----------------------------------------------------------- :: cast_high
- delta |- high:sz[num:sz'] ~> ext num:sz' ~hi:sz' ~lo:(sz'-sz)
+ ----------------------------------------------------------------- :: cast_high
+ delta |- high:sz[num:sz'] ~> ext num:sz' ~hi:(sz'-1) ~lo:(sz'-sz)
 
 
  -------------------------------------------- :: cast_signed
  delta |- signed:sz[w] ~> exts w ~hi:(sz-1) ~lo:0
 
- -------------------------------------------- :: cast_unsigned
- delta |- unsigned:sz[w] ~> low:sz[w]
+ -------------------------------------------------- :: cast_unsigned
+ delta |- unsigned:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
 
 
 defns multistep_exp :: '' ::=
