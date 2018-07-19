@@ -392,13 +392,39 @@ Definition compute_type (e : exp) : type :=
   | exp_concat e1 e2 => type_imm 0
   end.
 
+Fixpoint lift m n (e : exp) {struct e} : exp :=
+  match e with
+  | exp_var var5 => exp_var var5
+  | exp_letvar lid => exp_letvar (if lt_dec lid n then lid else (m + lid))
+  | exp_int word5 => exp_int word5
+  | exp_mem v w v' sz => exp_mem v w v' sz
+  | exp_load e1 e2 endian5 nat5 => exp_load (lift m n e1) (lift m n e2) endian5 nat5
+  | exp_store e1 e2 endian5 nat5 e3 =>
+    exp_store (lift m n e1) (lift m n e2) endian5 nat5 (lift m n e3)
+  | exp_binop e1 bop5 e2 => exp_binop (lift m n e1) bop5 (lift m n e2)
+  | exp_unop uop5 e => exp_unop uop5 (lift m n e)
+  | exp_cast cast5 nat5 e => exp_cast cast5 nat5 (lift m n e)
+  | exp_let e t eb => exp_let (lift m n e) t (lift m (S n) eb)
+  | exp_unk string5 type5 => exp_unk string5 type5
+  | exp_ite e1 e2 e3 => exp_ite (lift m n e1) (lift m n e2) (lift m n e3)
+  | exp_ext hi lo e => exp_ext hi lo (lift m n e)
+  | exp_concat e1 e2 => exp_concat (lift m n e1) (lift m n e2)
+  end.
+
+Notation "^ n" := (lift n 0) (at level 9, right associativity) : bil_exp_scope.
+
 Fixpoint letsubst (es : exp) (i : lid) (e : exp) : exp :=
   match e with
   | exp_var v => exp_var v
-  | exp_letvar i' => if Nat.eqb i i' then es else exp_letvar i'
+  | exp_letvar i' =>
+    match lt_eq_lt_dec i i' with
+    | inleft (left _) => exp_letvar (i' - 1)
+    | inleft (right _) => ^i es
+    | inright _ => exp_letvar i'
+    end
   | exp_int w => exp_int w
-  (* The second argument to mem is a value and therefore closed *)
-  | exp_mem e w v sz => exp_mem ([es./i] e) w v sz
+  (* The arguments are values and therefore closed *)
+  | exp_mem v w v' sz => exp_mem v w v' sz
   | exp_load em ea ed sz => exp_load ([es./i]em) ([es./i]ea) ed sz
   | exp_store em ea ed sz ev => exp_store ([es./i]em) ([es./i]ea) ed sz ([es./i]ev)
   | exp_binop e1 bop e2 => exp_binop ([es./i]e1) bop ([es./i]e2)
