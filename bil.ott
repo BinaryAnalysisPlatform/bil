@@ -683,7 +683,7 @@ defns reduce_exp :: '' ::=
  delta |- e1[v2,ed]:sz ~> e1'[v2,ed]:sz
 
  ------------------------------------------------------ :: load_byte
- delta |- v[w <- w':sz][w,ed']:sz ~> w'
+ delta |- v[w <- v':sz][w,ed']:sz ~> v'
 
  w1 <> w2
  ----------------------------------------------------------- :: load_byte_from_next
