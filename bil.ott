@@ -19,6 +19,10 @@ Hint Unfold list_mem.
 
 Hint Resolve eq_word : ott_coq_equality.
 
+Inductive Nth {A : Set}: list A -> nat -> A -> Prop :=
+| is_first : forall a l, Nth (a :: l) 0 a
+| is_later : forall a' l n a, Nth l n a -> Nth (a'::l) (S n) a.
+
 }}
 
 embed {{ coq-lib list_mem }}
@@ -338,6 +342,8 @@ formula :: formula_ ::=
  | id notin dom ( gamma )   :: M :: notin_ctx
    {{ tex [[id]] [[notin]] \mathsf{dom}([[gamma]]) }}
    {{ coq (~ (In [[id]] (map (fun v => match v with var_var id _ => id end) [[gamma]]))) }}
+ | Gl ( lid ) = t           :: M :: lgamma_nth
+   {{ coq (Nth [[Gl]] [[lid]] [[t]]) }}
 
 terminals :: terminals_ ::=
   | ->				::   ::	rarrow					{{ tex \rightarrow }}
@@ -483,16 +489,11 @@ defns typing_exp :: '' ::=
  ----------------- :: var
  G; Gl |- id:t :: t
 
+ Gl(lid) = t
  G is ok
- t is ok
  Gl is ok
- ----------------- :: letvarO
- G; Gl,t |- 0 :: t
-
- t' is ok
+ ----------------- :: letvar
  G; Gl |- lid :: t
- ---------------------- :: letvarS
- G; Gl,t' |- S lid :: t
 
  sz > 0
  G is ok

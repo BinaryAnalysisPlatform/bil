@@ -6,6 +6,63 @@ Require Import bil.bil.
 
 Local Open Scope bil_exp_scope.
 
+Ltac smart_induction x :=
+  intros until x;
+  repeat match goal with
+           y : _ |- _ =>
+           tryif unify y x then fail else revert y end;
+  induction x.
+
+Lemma Nth_app : forall {A : Set} (l l' : list A) n a, Nth l n a -> Nth (l ++ l') n a.
+Proof.
+  intros A l l' n a nth;
+    induction nth;
+    simpl;
+    constructor;
+    assumption.
+Qed.
+
+Lemma app_Nth : forall {A : Set} (l l' : list A) n a,
+    n < length l ->
+    Nth (l ++ l') n a ->
+    Nth l n a.
+Proof.
+  smart_induction l;
+    intros l' n aa nlt nth.
+  simpl in nlt; inversion nlt.
+  simpl in nth; inversion nth.
+  constructor.
+  subst.
+  constructor.
+  eapply IHl.
+  simpl in nlt; omega.
+  eassumption.
+Qed.
+
+Lemma Nth_not_empty : forall {A : Set} (l : list A) n a, Nth l n a -> l <> nil.
+Proof.
+  smart_induction l.
+  intros.
+  inversion H.
+  intros.
+  intro Hne; inversion Hne.
+Qed.
+Lemma Nth_length : forall {A : Set} (l : list A) n a, Nth l n a -> n < length l.
+Proof.
+  smart_induction l;
+    intros; inversion H; subst.
+  simpl; omega.
+  simpl.
+  apply lt_n_S.
+  eauto.
+Qed.
+
+Ltac solve_Nth :=
+  solve [ apply Nth_app; assumption
+        | eapply app_Nth; eassumption ].
+
+Hint Extern 9 (Nth _ _ _) => solve_Nth.
+
 Ltac destruct_decisions_with rules :=
   repeat (match goal with
          | |- context [lt_dec ?n1 ?n2] =>
@@ -78,12 +135,6 @@ Proof.
   destruct_decisions.
 Qed.
 
-Ltac smart_induction x :=
-  intros until x;
-  repeat match goal with
-           y : _ |- _ =>
-           tryif unify y x then fail else revert y end;
-  induction x.
 
 Lemma commute_lift_subst : forall p n k es e, k <= p ->
     lift n k ([es./p]e) = [es./n+p](lift n k e).
@@ -303,8 +354,8 @@ Ltac apply_type_rule :=
     [|- _;_|-- ?e ::: _] =>
     lazymatch fn_head e with
     | exp_var => apply t_var || fail "could not use t_var"
-    | exp_letvar => apply t_letvarO || eapply t_letvarS
-                    || fail "could not use t_letvarO or t_letvarS"
+    | exp_letvar => constructor
+                    || fail "could not use t_letvar"
     | exp_int =>
       normalize_words;
       match goal with
@@ -457,6 +508,24 @@ Proof.
     [constructor|]; auto.
 Qed.
 
+Lemma app_typ_gamma : forall g g',
+    typ_gamma (g ++ g') -> typ_gamma g /\ typ_gamma g'.
+Proof.
+  induction g; simpl.
+  split; [constructor | assumption].
+  intros g' appwf;
+  inversion appwf.
+  specialize (IHg g' H3);
+  destruct IHg;
+  split;
+    [constructor|]; auto.
+  rewrite map_app in H1.
+  intro ing.
+  elim H1.
+  apply in_or_app.
+  auto.
+Qed.
+
 (* TODO: move to bil.ott? *)
 Theorem exp_ind_rec_lid
   : forall P : exp -> Prop,
@@ -503,13 +572,6 @@ Proof.
                   [IH : forall lg t, ?g; lg |-- ?e ::: t -> typ_lgamma lg,
                      H : ?g;?lg |-- ?e ::: _ |- typ_lgamma ?lg] => eapply IH; eauto
                 end].
-  subst.
-  constructor.
-  assumption.
-  match goal with
-    [IH : forall lg t, ?g; lg |-- ?e ::: t -> typ_lgamma lg,
-       H : ?g;?lg |-- ?e ::: _ |- typ_lgamma ?lg] => eapply IH; eauto
-  end.
 Qed.
 
 
@@ -587,7 +649,7 @@ Lemma exp_let_weakening1 : forall g lg lg' e t,
 Proof.
   intros g lg lg' e t.
   revert lg lg' t.
-  induction e using exp_ind_rec_lid;
+  induction e;
     intros lg lg' lg'wf tt te;
     inversion te;
     destruct_var_eqs;
@@ -595,7 +657,6 @@ Proof.
         t;eauto; apply typ_lgamma_app; auto
     in
     try solve [do_for_all_exps app_tac].
-
   - apply t_let;
       [ apply IHe1;
         assumption
@@ -610,25 +671,8 @@ Lemma exp_let_strengthening_letvar : forall g lg lg' lid t,
        g;lg|-- exp_letvar lid ::: t.
 Proof.
   intros.
-  generalize dependent lid.
-  induction lg; intros.
-  simpl in H; omega.
-  destruct lid.
   inversion H0.
-  apply t_letvarO;
-    first [ assumption
-          | solve_typ_lgamma].
-  apply t_letvarS.
-  - apply type_exp_typ_lgamma in H0.
-    simpl in H0.
-    inversion H0.
-    assumption.
-  - apply IHlg.
-    simpl in H.
-    omega.
-    simpl in H0.
-    inversion H0.
-    assumption.
+  constructor; auto.
 Qed.
 
 Lemma word_type_independent : forall g1 lg1 g2 lg2 w t,
@@ -742,12 +786,12 @@ Proof.
     auto;
     try omega;
     eauto;
-    repeat (apply Nat.max_lub; eauto).
-  - simpl in IHe.
-    simpl.
-    apply le_n_S.
-    eapply IHe.
-    eauto.
+    repeat (apply Nat.max_lub; eauto);
+    try match goal with
+          H : Nth _ _ _ |- _ =>
+          apply Nth_length in H;
+            omega
+        end.
   - apply Nat.le_pred_le_succ.
     specialize (IHe2 (t::gl) tt H6).
     simpl in IHe2.
@@ -793,23 +837,6 @@ Proof.
           end in
     try solve [apply_type_rule; auto
         |do_for_all_exps app_tac].
-  - destruct lg;[simpl in lfv_lt;omega|].
-    inversion H.
-    subst;
-    simpl; apply t_letvarO; auto.
-  -  destruct lg;[simpl in lfv_lt;omega|].
-    apply t_letvarS.
-    + simpl in H;
-        inversion H.
-        rewrite <- H1.
-        auto.
-    + eapply IHe.
-      simpl; simpl in lfv_lt.
-      apply le_S_n.
-      assumption.
-      inversion H.
-      rewrite H4 in H3.
-      eauto.
 Qed.
 
 Ltac smart_induction_using x ind :=
@@ -850,6 +877,30 @@ Proof.
     eapply IH; eauto
   end.
 Qed.
+
+Lemma lvar_type_wf : forall lg t, typ_lgamma lg -> In t lg -> type_wf t.
+Proof.
+  induction lg;
+    intros t tlg inlg;
+    inversion inlg.
+  inversion tlg;
+    subst;
+    assumption.
+  apply IHlg; auto.
+Qed.
+
+Lemma Nth_In : forall {A : Set} l n (a : A), Nth l n a -> In a l.
+Proof.
+  smart_induction l;
+    intros; inversion H.
+  constructor; reflexivity.
+  subst.
+  simpl.
+  right.
+  eapply IHl.
+  eassumption.
+Qed.
+
 Lemma type_exp_type_wf : forall g gl e t,
     g;gl|-- e ::: t -> type_wf t.
 Proof.
@@ -862,17 +913,22 @@ Proof.
     eauto;
     try solve [constructor;
                eauto].
+
+  apply Nth_In in H0.
+  eapply lvar_type_wf; eauto.
+  inversion H0.
+  apply IHe with (gl := l).
+  subst.
+  inversion te.
+  econstructor; eauto.
   constructor.
   omega.
-  constructor.
-  apply IHe1 in H3.
-  apply IHe2 in H5.
-  inversion H3.
-  inversion H5.
-  omega.
+  apply IHe1 in H3;
+    apply IHe2 in H5.
+  inversion H3;
+    inversion H5;
+    constructor; omega.
 Qed.
-
-
 
 Ltac solve_type_wf :=
   tryif match goal with [ |- type_wf _] => idtac end then idtac
@@ -1109,69 +1165,34 @@ Proof.
     end.
   - *)
 
+Lemma app_Nth_ge : forall {A : Set} l l' n (a : A),
+    n >= length l ->
+    Nth (l ++ l') n a ->
+    Nth l' (n - length l) a.
+Proof.
+  smart_induction l;
+    simpl; intros.
+  rewrite Nat.sub_0_r;
+    assumption.
+  destruct n; [omega|
+               inversion H0;
+               subst;
+               simpl;
+               apply IHl;
+               [omega | assumption]].
+Qed.
+
 Lemma exp_letvar_strengthening2 : forall g gl gl' lid t,
     lid >= length gl' ->
     g;gl'++gl |-- exp_letvar lid ::: t ->
       g;gl |-- exp_letvar (lid - length gl') ::: t.
 Proof.
-  intros g gl gl'; revert gl.
-  induction gl'.
-  intros.
-  simpl in H0. simpl.
-  rewrite Nat.sub_0_r.
-  assumption.
-  simpl.
-  intros.
-  inversion H0.
-  destruct_var_eqs.
-  inversion H.
-  simpl.
-  apply IHgl'.
-  omega.
-  assumption.
-Qed.
-
-Lemma exp_let_weakening_letvar2 : forall g lg lg' lid t,
-    typ_lgamma lg' ->
-    g; lg |-- exp_letvar lid ::: t -> g; lg' ++ lg |-- exp_letvar (length lg' + lid) ::: t.
-Proof.
-  intros.
-  induction lg'.
-  simpl; auto.
-  simpl.
-  apply t_letvarS.
-  - inversion H.
-    assumption.
-  - apply IHlg'.
-    solve_typ_lgamma.
-Qed.
-
-Lemma exp_let_weakening_letvar : forall g lg wlg lg' lid t,
-    typ_lgamma wlg ->
-    g; lg ++ lg' |-- exp_letvar lid ::: t ->
-       g; lg ++ wlg ++ lg' |-- lift (length wlg) (length lg) (exp_letvar lid) ::: t.
-Proof.
-  smart_induction lg.
-  simpl; intros.
-  apply exp_let_weakening_letvar2; auto.
-  simpl; intros.
-  destruct lid.
-  simpl.
-  inversion H0; subst.
+  intros g gl gl' lid t lidge lidt.
   constructor; auto.
-  specialize (IHlg g wlg lg' lid t).
-  simpl in IHlg.
-  destruct_decisions.
-  constructor; auto.
-  destruct (lt_dec lid (length lg)); try omega.
-  inversion H0.
+  inversion lidt.
   subst.
-  auto.
-  destruct (lt_dec lid (length lg)); try omega.
-  replace (length wlg + S lid) with (S (length wlg + lid)) by omega.
-  constructor; auto.
-  inversion H0; auto.
-Qed.
+  apply app_Nth_ge; auto.
+  Qed.
 
 (*
 Lemma exp_let_weakening2 : forall g lg lg' e t,
@@ -1227,6 +1248,17 @@ Proof.
     eauto.
   *)
 
+Lemma Nth_app_ge : forall {A : Set} l l' n (a : A),
+    Nth l' n a -> Nth (l ++ l') (n + length l) a.
+Proof.
+  smart_induction l;
+    simpl; intros.
+  rewrite Nat.add_0_r.
+  assumption.
+  rewrite Nat.add_succ_r.
+  constructor.
+  auto.
+Qed.
 
 Lemma exp_let_weakening : forall g lg wlg lg' e t,
     typ_lgamma wlg ->
@@ -1238,12 +1270,24 @@ Proof.
     induction e;
     intros lg wlg lg' tt twlg te;
     inversion te; try now (simpl; econstructor; eauto).
-  subst;
-  apply exp_let_weakening_letvar; auto.
-  subst;
-  apply exp_let_weakening_letvar; auto.
   subst.
-  simpl.
+  constructor.
+  destruct_decisions.
+  apply Nth_app.
+  apply app_Nth in H0; auto.
+  apply app_Nth_ge in H0.
+
+  apply Nth_app_ge with (l := lg ++ wlg) in H0.
+  rewrite app_length in H0.
+  rewrite Nat.add_assoc in H0.
+  rewrite Nat.sub_add in H0.
+  rewrite Nat.add_comm.
+  rewrite List.app_assoc.
+  assumption.
+  omega.
+  omega.
+  auto.
+  auto.
   constructor; auto.
   match goal with H : context [_;_|-- lift _ _ ?e ::: _] |- _;_|-- ?e ::: ?t =>
                   specialize (H lg wlg lg' t);
@@ -1258,7 +1302,7 @@ Proof.
   simpl; constructor; auto.
   specialize (IHe2 (t:: lg) wlg lg' tt).
   simpl in IHe2.
-  apply IHe2; auto. 
+  apply IHe2; auto.
 Qed.
 
 Ltac solve_binop_preservation :=
@@ -1309,10 +1353,193 @@ Proof.
     assumption.
 Qed.
 *)
+(*
+Lemma exp_let_strengthening : forall g lg wlg lg' e t,
+      g; lg ++ wlg ++ lg' |-- lift (length wlg) (length lg) e ::: t ->
+         g;lg++lg'|-- e ::: t.
+Proof.
+  smart_induction e;
+    simpl;
+    intros g lg wlg lg' tt te;
+    inversion te;
+    subst;
+    try constructor; auto.
+  match goal with H : context[lt_dec ?m ?n] |- _ => destruct (lt_dec m n) end.
+  destruct lg.
+  inversion l.
+  inversion H.
+  subst; simpl; constructor; auto.
+  symmetry in H0.
+  apply plus_is_O in H0.
+  destruct H0.
+  subst.
+  destruct lg.
+  destruct wlg.
+  simpl.
+  simpl in H.
+  inversion H.
+  constructor; auto.
+  simpl in H0; inversion H0.
+  simpl in n; omega.
+
+  match goal with H : context[lt_dec ?m ?n] |- _ => destruct (lt_dec m n) end.
+  subst.
+  apply exp_let_strengthening1 in te.
+Admitted.
+(*
+  rewrite <- app_nil_r with (l := lg).
+  rewrite <- app_assoc.
+  erewrite <- lift_by_0 with (e := exp_letvar (S lid0)).
+  apply exp_let_weakening.
+  constructor.
+  
+
+  destruct lg.
+  - inversion l.
+  - inversion H.
+    subst.
+    simpl; constructor; auto.
+    simpl in l.
+    assert (lid0 < length lg) by omega.
+    eapply exp_let_strengthening1.
+    simpl.
+    rewrite app_length.
+    omega.
+    
+    Search (length (_++_)).
+    inversion l.
+    
+
+  inversion H0.
+  Search (_ + _ = 0).
+
+  intros.
+  eapply exp_let_strengthening2.
+  give_up.
+  
+  eapply max_lfv_length_env.
+  Search max_lfv.
+
+*)
+
+Lemma letsubst_type : forall g gl1 gl2 lid t e' t',
+    g;gl2 |-- e' ::: t' ->
+      g;gl1 ++ (t'::gl2) |-- lift 1 (length gl1) (exp_letvar lid) ::: t ->
+        g;gl1++gl2 |-- ([e'./length gl1](exp_letvar lid)) ::: t.
+Proof.
+  intros g gl1 gl2 lid t e' t'.
+  intros.
+  simpl.
+  destruct_decisions.
+  replace 1 with (length (t'::nil)) in H0 by (simpl; auto).
+  replace (t'::gl2) with ((t'::nil)++gl2) in H0 by (simpl;auto).
+  eapply exp_let_strengthening in H0.
+
+  replace (exp_letvar lid) with (lift 0 0 (exp_letvar lid)) by (rewrite lift_by_0; auto).
+  replace (length gl1) with (0 + length gl1) by (simpl; auto).
+  rewrite <- commute_lift_subst.
+  
+
+
+
+
+  simpl.
+  destruct_decisions.
+  intros e't lidt.
+  rewrite <- e in lidt.
+  simpl.
+  replace t with t'.
+  rewrite <- app_nil_l with (l := gl2) in e't.
+  apply exp_let_weakening with (wlg := gl1) in e't.
+  simpl in e't.
+  assumption.
+  auto.
+  apply exp_letvar_strengthening2 in lidt.
+  replace (length gl1 - length gl1) with 0 in lidt by omega.
+  inversion lidt.
+  reflexivity.
+  omega.
+  generalize dependent gl1.
+  revert gl2.
+  induction lid.
+  intros gl2 gl1 l0' l0 e't lidt.
+  destruct gl1; simpl in l0; try omega.
+  simpl.
+  inversion lidt.
+  constructor; auto.
+  intros gl2 gl1 l0' l0 e't lidt.
+  destruct gl1; simpl in l0; try omega.
+  inversion lidt.
+  subst.
+  constructor; auto.
+  fold (@app type).
+  apply IHlid; auto.
+  omega.
+  omega.
+  intros.
+  generalize dependent lid.
+  revert gl2.
+  induction gl1.
+  intros.
+  
+
+  replace (exp_letvar (length gl1)) with (^ (length gl1) (exp_letvar 0)) in lidt.
+  apply exp_let_strengthening in lidt.
+
+  replace (S (length gl1)) with (length gl1 + 1) by omega.
+  replace (a::gl1 ++ gl2) with ((a::nil) ++ gl1 ++ gl2) by (simpl ; auto).
+  erewrite <- combine_lift.
+  apply exp_let_weakening; auto.
+  rewrite <- app_nil_l with (l := gl2) in e't.
+  apply exp_let_weakening with (wlg := gl1) in e't.
+  simpl in e't.
+  
+  replace (t' :: gl2) with ((t'::nil) ++ gl2) in lidt.
+  smart_induction e;
+    intros g gl1 gl2 lid tt e' tt';
+
+*)
+
+
+Lemma value_drop_lift : forall n m g gl v t,
+    is_val_of_exp v ->
+    g;gl |-- lift n m v ::: t ->
+      g;gl |-- v ::: t.
+Proof.
+  induction v; simpl; tauto.
+Qed.
+
+Lemma value_types_any_context : forall g g' gl gl' v t,
+    typ_gamma g' ->
+    typ_lgamma gl' ->
+    is_val_of_exp v ->
+    g;gl |-- v ::: t ->
+      g';gl' |-- v ::: t.
+Proof.
+  intros g g' gl gl' v t g't gl't vv vt.
+  apply val_closed in vt;try assumption.
+  match goal with
+    |- ?g;_ |-- _ ::: _ =>
+    rewrite <- app_nil_r with (l := g);
+      rewrite <- app_nil_l with (l := g ++ nil)
+  end.
+  apply exp_weakening.
+  match goal with
+    |- _;?gl |-- _ ::: _ =>
+    rewrite <- app_nil_r with (l := gl);
+      rewrite <- app_nil_l with (l := gl ++ nil)
+  end.
+  eapply value_drop_lift; auto.
+  apply exp_let_weakening; auto.
+  simpl.
+  rewrite app_nil_r.
+  assumption.
+Qed.
+
 
 Lemma letsubst_type : forall g gl1 gl2 e t e' t',
-    g;gl1 |-- e' ::: t' ->
-      g;gl1 ++ (t'::gl2) |-- lift 1 (length gl1 + 1) e ::: t ->
+    g;gl2 |-- e' ::: t' ->
+      g;gl1 ++ (t'::gl2) |-- e ::: t ->
         g;gl1++gl2 |-- ([e'./length gl1]e) ::: t.
 Proof.
   smart_induction e;
@@ -1322,112 +1549,47 @@ Proof.
   try now (simpl; econstructor; eauto).
   simpl.
   destruct_decisions.
-  simpl in et.
-  destruct (lt_dec lid5 (length gl1 + 1)); try omega.
-  simpl in et.
-  eapply exp_let_weakening.
-  destruct (lt_dec lid5 (length gl1 + 1)); try omega.
-  
-  destruct (lt_dec lid5 (length gl1)); try omega.
-  destruct (lt_dec lid5 (length gl1)); try omega.
-  induction gl1.
-  simpl in H0; inversion H0.
-  simpl in IHgl1.
-  destruct (lt_dec lid5 (length gl1)); try omega.
-  simpl in H0.
-  destruct (lt_dec lid5 (S (length gl1))); try omega.
-  subst.
-  simpl in et.
-  inversion et.
-  subst.
-  constructor;
-    fold (app (A := type));
-    auto.
-  inversion H.
-  simpl in H0.
-  destruct (lt_dec lid5 (S (length gl1))); try omega.
-  subst.
-  constructor; 
-    fold (app (A := type));
-    auto.
+  destruct lid5.
+  simpl in l; inversion l.
   simpl.
-  simpl in et.
-  destruct_decisions.
-  destruct (lt_dec lid5 (length gl1)); try omega.
+  rewrite Nat.sub_0_r.
+  constructor; auto.
+  replace lid5 with (lid5 - length gl1 + length gl1) by omega.
+  apply Nth_app_ge.
+  apply app_Nth_ge in H0.
+  replace (S lid5 - length gl1) with (S (lid5 - length gl1)) in H0 by omega.
   inversion H0.
   subst.
-  Search exp_let_strengthening2.
-  destruct
-  destruct (lt_dec lid5 (length gl1)).
+  assumption.
+  omega.
+  replace (gl1 ++ gl2) with (nil ++ gl1 ++ gl2) by (simpl; reflexivity).
+  apply exp_let_weakening; auto.
+  simpl.
   subst.
-  
+  apply app_Nth_ge in H0; auto.
+  rewrite Nat.sub_diag in H0.
+  inversion H0.
+  subst; assumption.
+  simpl in et.
+  destruct (lt_dec lid5 (length gl1 + 1)); try omega.
+  apply exp_let_strengthening1 in et.
+  rewrite <- app_nil_r with (l := gl1) in et.
+  apply exp_let_weakening with (wlg := gl2) in et.
+  simpl in et.
+  destruct (lt_dec lid5 (length gl1)); try omega.
+  rewrite app_nil_r in et.
+  assumption.
+  auto.
+  auto.
+  simpl; constructor; auto.
+  eapply value_types_any_context; eauto.
+  eapply value_types_any_context; eauto.
+  simpl; constructor; eauto.
+  rewrite app_comm_cons.
+  eapply IHe2; eauto.
+Qed.
 
-Lemma letsubst_type : forall g gl gl' e t e' t',
-    g;nil |-- e' ::: t' ->
-      g;gl ++ (t'::gl') |-- lift_above (length gl + 1) e ::: t ->
-        g;gl++gl' |-- ([e'./length gl]e) ::: t.
-Proof.
-  intros g gl gl'.
-  induction e;
-    intros tt e' t' e't et;
-        inversion et;
-        subst.
-      - econstructor; auto.
-        solve_typ_lgamma.
-      - destruct gl, lid5.
-        simpl.
-        simpl in H; inversion H; subst.
-        eapply exp_let_weakening1 in e't.
-        simpl in e't.
-        eassumption.
-        solve_typ_lgamma.
-        simpl.
-        inversion H; subst.
-        simpl in H0; inversion H0.
-        simpl.
-        simpl in et.
-        inversion H.
-        subst.
-        solve_type_rule.
-        simpl in H0.
-        destruct (lt_dec (S lid5) (S (length gl + 1))); inversion H0.
-      - destruct gl, lid5.
-        simpl.
-        simpl in H; inversion H; subst.
-        eapply exp_let_weakening1 in e't.
-        simpl in e't.
-    (*    eassumption.
-        solve_typ_lgamma.
-        simpl.
-        inversion H; subst.
-        simpl in H0; inversion H0.
-        simpl.
-        simpl in et.
-        inversion H.
-        subst.
-        solve_type_rule.
-        simpl in H0.
-        destruct (lt_dec (S lid5) (S (length gl + 1))); inversion H0.
-
-      - destruct gl.
-        simpl.
-        simpl in et.
-        inversion et.
-        subst.
-        eapply exp_let_weakening1 in e't.
-        simpl in e't.
-        eassumption.
-        solve_typ_lgamma.
-        simpl.
-        inversion et.
-        subst.
-        apply t_letvarO.
-        solve_typ_gamma.
-        solve_type_wf.
-        solve_typ_lgamma.
-      - destruct (lt_dec (S lid5) (length gl + 1) ); inversion H0.
-      - *)
-Admitted.
+Hint Immediate type_exp_type_wf.
 
 Lemma exp_preservation : forall d e e' t,
     type_delta d ->
@@ -1464,7 +1626,9 @@ Proof.
                 inversion te;
                 subst;
                 eapply t_lop;
-                eauto].
+                eauto];
+    unify_sizes;
+    try solve_type_rule.
   - apply exp_weakening_nil.
     eapply in_type_delta; eauto.
     assumption.
@@ -1474,28 +1638,26 @@ Proof.
       let tac := (first [omega | eapply exp_type_succ; eauto]) in
       solve_type_rule_using tac.
   - apply_type_rule.
-   + replace (sz' - sz + sz - sz) with (sz' - sz) by omega.
-     let tac := (first [omega | eapply exp_type_succ; eauto]) in
+    + replace (sz' - sz + sz - sz) with (sz' - sz) by omega.
+      let tac := (first [omega | eapply exp_type_succ; eauto]) in
       solve_type_rule_using tac.
    + solve_type_rule.
-  - let tac := (eapply exp_type_succ; eauto) in
+  - constructor; eauto.
+    + destruct_existentials.
+      subst.
+      exists (x - 1).
+      rewrite Nat.mul_sub_distr_r.
+      simpl.
+      rewrite Nat.add_0_r.
+      reflexivity.
+    + omega.
+    + solve_type_rule.
+    + eapply exp_type_succ; eauto.
+    + solve_type_rule.
+  - let tac := (first [omega | eapply exp_type_succ; eauto]) in
       solve_type_rule_using tac.
-  - let tac := (eapply exp_type_succ; eauto) in
-      solve_type_rule_using tac.
-  - unify_sizes.
-    solve_type_rule.
-  - match goal with
-      [ H : _;_ |-- exp_unk _ ?t ::: type_imm ?sz |- _] =>
-      destruct t; try now inversion H
-    end.
-    unify_sizes.
-    solve_type_rule.
-  - unify_sizes.
-    solve_type_rule.
   - rewrite <- app_nil_l with (l := nil).
-    eapply letsubst_type; try eassumption.
-    simpl.
-    
+    eapply letsubst_type; eauto.
   - unfold sw_lt.
     destruct_all word.
       unify_sizes.
@@ -1528,14 +1690,6 @@ Proof.
         |- context[if ?c then _ else _] =>
         destruct c; solve_type_rule
       end.
-  - unify_sizes.
-    solve_type_rule.
-  - unify_sizes.
-    solve_type_rule.
-  - unify_sizes.
-    solve_type_rule.
-  - unify_sizes.
-    solve_type_rule.
   - destruct_all word.
     unify_sizes.
     solve_type_rule.
@@ -1655,7 +1809,7 @@ Proof.
       rewrite <- Word.natToWord_wordToNat with (w := w')
     end.
     solve_type_rule.
-Qed?
+Qed.
 
 Lemma type_exp_unique : forall g gl e t,
     g; gl |-- e ::: t -> forall t', g; gl |-- e ::: t' -> t = t'.
