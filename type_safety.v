@@ -1591,6 +1591,25 @@ Qed.
 
 Hint Immediate type_exp_type_wf.
 
+Lemma ext_high_size : forall sz sz',
+    sz > 0 ->
+    sz' >= sz -> match sz' - sz with
+                 | 0 => S (sz' - 1)
+                 | S l => sz' - 1 - l
+                 end  = sz.
+Proof.
+  intros sz sz' szgtz sz'gt.
+  simpl.
+  destruct (Nat.eq_dec sz' sz).
+  subst.
+  replace (sz - sz) with 0 by omega.
+  omega.
+  assert (sz' > sz) by omega.
+  replace (sz' - sz) with (S (sz' - sz - 1)) by omega.
+  omega.
+Qed.
+
+
 Lemma exp_preservation : forall d e e' t,
     type_delta d ->
     (map fst d);nil |-- e ::: t ->
@@ -1724,24 +1743,7 @@ Proof.
         by (f_equal; omega).
     solve_type_rule.
   - simpl in H2; contradiction.
-  -Lemma ext_high_size : forall sz sz',
-       sz > 0 ->
-       sz' >= sz -> match sz' - sz with
-                | 0 => S (sz' - 1)
-                | S l => sz' - 1 - l
-                end  = sz.
-   Proof.
-     intros sz sz' szgtz sz'gt.
-     simpl.
-     destruct (Nat.eq_dec sz' sz).
-     subst.
-     replace (sz - sz) with 0 by omega.
-     omega.
-     assert (sz' > sz) by omega.
-     replace (sz' - sz) with (S (sz' - sz - 1)) by omega.
-     omega.
-   Qed.
-    unfold ext;
+  - unfold ext;
       unfold ext'.
     simpl.
     rewrite <- ext_high_size with (sz := sz) (sz' := sz') at 3.
@@ -1811,6 +1813,14 @@ Proof.
     solve_type_rule.
 Qed.
 
+Lemma Nth_Nth_eq : forall {A : Set} l n (a a' : A),
+    Nth l n a -> Nth l n a' -> a = a'.
+Proof.
+  smart_induction l;
+    intros n aa aa' aanth aa'nth; inversion aanth;
+      subst; inversion aa'nth; [reflexivity | eapply IHl; eassumption].
+Qed.
+
 Lemma type_exp_unique : forall g gl e t,
     g; gl |-- e ::: t -> forall t', g; gl |-- e ::: t' -> t = t'.
 Proof.
@@ -1824,252 +1834,155 @@ Proof.
           H : ?g; ?gl |-- ?e ::: ?GR |- ?GL = ?GR ] =>
       apply IH; assumption
     end.
-  - repeat match goal with
-           | [ IH : forall t', ?g;?gl |-- ?e ::: t' -> ?GL = t' ,
-                 H : ?g;?gl |-- ?e ::: _ |- _ ] =>
-             apply IH in H
-           end.
-    inversion H3.
-    inversion H5.
-    reflexivity.
+  eapply Nth_Nth_eq; eassumption.
+  repeat match goal with
+         | [ IH : forall t', ?g;?gl |-- ?e ::: t' -> ?GL = t' ,
+               H : ?g;?gl |-- ?e ::: _ |- _ ] =>
+           apply IH in H
+         end.
+  inversion H3.
+  inversion H5.
+  subst.
+  reflexivity.
 Qed.
 
-(*
-  intros.
-  inversion H.
 
-
-  simpl.
-  all: try solve [intros; inversion H | auto].
-  destruct (eq_letvar letvar5 x).
-  rewrite e in enl; contradiction.
-  auto.
-  inversion H.
-
-  all: try (destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction)).
-  simpl.
-  try destruct (eq_letvar letvar5 x).
-  rewrite e in enl; contradiction.
-  auto.
-  inversion H.
-  simpl; try destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
-  auto.
-  auto.
-  - rewrite <- H.
-    simpl.
-    destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
-    reflexivity.
-  - simpl in H.
-    destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
-    inversion H.
-    rewrite <- H1; intro eq; symmetry in eq; contradiction.
-  - 
-    destruct (eq_letvar letvar5 x); try (rewrite e in enl; contradiction).
-
-
-
-  constructor.
-  intros y H.
-  inversion H.
-  constructor.
-  assumption.
-  inversion H.
-  simpl;
-    intros;
-    destruct (eq_letvar letvar5 x);
-    solve [rewrite e in enl; contradiction | auto].
-  constructor.
-  induction e; simpl; try solve [auto | intros y H; inversion H].
-  intros;
-    destruct (eq_letvar letvar5 x).
-  rewrite e in enl; contradiction.
-  inversion H.
-  rewrite H1 in n.
-  firstorder.
-  constructor.
-  induction e; simpl; try solve [auto | intros y H; inversion H].
-  intros;
-    destruct (eq_letvar letvar5 x).
-  rewrite e in enl; contradiction.
-  auto.
-  constructor.
-  - induction e; simpl; try solve [auto | intros; inversion H].
-    + intros.
-      destruct (eq_letvar letvar5 x).
-      rewrite e in enl; contradiction.
-      inversion H.
-    + intros.
-      inversion H.
-      destruct (eq_exp e0 (exp_letvar x));
-        destruct (eq_exp e1 (exp_letvar x));
-        destruct (eq_exp e2 (exp_letvar x));
-        destruct (eq_exp e3 (exp_letvar x)).
-      * rewrite e, e4, e5, e6.
-        reflexivity.
-      * rewrite e5 in H2.
-        simpl in H2.
-        destruct (eq_letvar x x); try contradiction.
-        
-
-Lemma subst_eq_esubst : forall e x es, es = [es./x]e -> e = exp_letvar x \/ e = es.
+Lemma get_delta_val : forall {A B : Set} (l : list (A * B)) x,
+    In x (map fst l) ->
+    exists e, In (x,e) l.
 Proof.
-  intros e x.
-  induction e; simpl; auto; intros es es_eq.
-  - destruct (eq_letvar letvar5 x).
-    + rewrite e.
-      left; reflexivity.
-    + right; symmetry; assumption.
-  - inversion es_eq.
-
-
-elim n.
-        
-
-        rewrite e in H1.
-        rewrite e4 in H1.
-        
-        repeat match goal with
-             |
-
-  constructor.
-  *)
-(*
-Lemma letsubst_inversion_var : forall es x e y,
-    e <> exp_letvar x -> [es./x]e = exp_var y -> e = exp_var y.
-Proof.
-  intros es x e y enl.
-  induction e.
-  all: simpl; try solve [auto | intro H; inversion H].
-  simpl;
-    intros;
-    destruct (eq_letvar letvar5 x);
-    solve [rewrite e in enl; contradiction | auto].
+  intros A B l;
+    induction l;
+    intros x inx;
+    inversion inx.
+  exists (snd a).
+  subst.
+  rewrite <- surjective_pairing.
+  simpl.
+  auto.
+  simpl.
+  assert (exists e : B, In (x,e) l) by auto.
+  destruct H0.
+  eauto.
 Qed.
-*)
-(*
-Ltac letsubst_unused_rec_case :=
-  f_equal;
-  let H := match goal with
-             [ H : forall x es, ~In x _ -> [es./x]?e = ?e |- [_./_]?e = ?e] => H
-           end in
-  apply H;
-  auto;
-  let nin := match goal with
-               [ nin : ~In _ _ |- _ ] => nin
-             end in
-  intro; elim nin;
-  apply in_or_app;
-  first [left; assumption
-        | right; apply in_list_minus;
-          solve [firstorder]
-        | solve [firstorder]].
 
-Lemma letsubst_unused : forall x es e,
-    ~In x (lfv_exp e) -> [es./x]e = e.
+
+Lemma in_type_delta_val : forall x v d, type_delta d -> In (x,v) d -> is_val_of_exp v.
 Proof.
-  intros x es e; revert x es.
-  induction e;
+  smart_induction d;
     simpl;
-    auto;
-    intros x es nin;
-    try solve[letsubst_unused_rec_case].
-  - destruct (eq_letvar letvar5 x);
-      [> elim nin; left; assumption
-      | reflexivity].
-  - destruct (eq_letvar letvar5 x);
-    letsubst_unused_rec_case.
+    intros x v td xind;
+    inversion xind;
+    inversion td.
+  subst.
+  inversion H0.
+  subst.
+  assumption.
+  eapply IHd; eauto.
 Qed.
 
-Ltac letsubst_distributes_rec_case :=
-  f_equal;
-  match goal with
-    [ IH : forall x y es1 es2,
-        _ -> _ -> _ -> [es1./x]([es2./y]?e) = [es2./y]([es1./x]?e)
-        |- [?es1 ./ ?x] ([?es2 ./ ?y] ?e) = [?es2 ./ ?y] ([?es1 ./ ?x] ?e) ] =>
-    apply IH; assumption
-  end.
 
-Lemma letsubst_distributes : forall x y es1 es2 e,
-    ~In y (lfv_exp es1) ->
-    lfv_exp es2 = nil ->
-    x <> y -> ([es1./x][es2./y]e) = [es2./y][es1./x]e.
-  intros x y es1 es2 e; revert x y es1 es2.
-  induction e;
-        intros x y es1 es2 yni1 es2_closed xne;
-        simpl;
-        try solve [auto | letsubst_distributes_rec_case].
-  - destruct (eq_letvar letvar5 y).
-    + destruct (eq_letvar letvar5 x).
-      * rewrite <- e in xne;
-          rewrite <- e0 in xne;
-          contradiction.
-      * simpl.
-        destruct (eq_letvar letvar5 y).
-        apply letsubst_unused;
-          rewrite es2_closed;
-          auto.
-        rewrite e in n0.
-        contradiction.
-    + destruct (eq_letvar letvar5 x).
-      * simpl.
-        destruct (eq_letvar letvar5 x);
-          rewrite letsubst_unused;
-          tauto.
-      * simpl.
-        destruct (eq_letvar letvar5 x);
-          destruct (eq_letvar letvar5 y);
-          tauto.
-  - destruct (eq_letvar letvar5 x) as [lv5xe | nlv5xe];
-    destruct (eq_letvar letvar5 y)as [lv5ye | nlv5ye].
-     + rewrite <- lv5xe in xne.
-       rewrite <- lv5ye in xne.
-       contradiction.
-     + rewrite lv5xe.
-       letsubst_distributes_rec_case.
-     + rewrite lv5ye.
-       letsubst_distributes_rec_case.
-     + letsubst_distributes_rec_case.
-Qed.
-*)
-(*
-Ltac subst_type_exp app_tac :=
-  inversion et;
-  match goal with
-    [ H : ?t = ?t' |- _;_ |-- _ ::: ?t ] => destruct H
-  end;
-  app_tac; auto.
-
-Lemma subst_type_exp : forall g e t es gl ts gl',
-    g; gl ++ (ts :: gl') |-- e ::: t ->
-       g; gl' |-- es ::: ts ->
-          g; gl ++ gl' |-- [es./length gl] e ::: t.
+Lemma exp_progress : forall d e t,
+    type_delta d ->
+    map fst d;nil |-- e ::: t ->
+      is_val_of_exp e \/
+      exists e', exp_step d e e'.
 Proof.
-  intros g e t es gl ts gl'.
-  generalize dependent t.
-  induction e; simpl;
-    intros tt et est.
-  - apply exp_let_weakening.
-    destruct (eq_letvar letvar5 (letvar_var id ts)).
-    destruct letvar5.
-    inversion et.
+  smart_induction e;
+    intros d tt td te;
+    (* solve the value cases *)
+    try solve [left; constructor; inversion te; assumption];
+    right.
+  - inversion te.
+    subst.
+    apply get_delta_val in H0.
+    destruct H0 as [x xin].
+    exists x.
+    constructor.
+    eapply in_type_delta_val; eauto.
     assumption.
-  - let app_tac := (apply t_mem) in
-    subst_type_exp app_tac.
-  - let app_tac := (apply t_load with (sz := sz) (nat5 := nat0)) in
-    subst_type_exp app_tac.
-  - let app_tac := (apply t_store with (sz := sz) (nat5 := nat0)) in
-    subst_type_exp app_tac.
-  - destruct bop5.
-    + let app_tac := (apply t_aop) in
-      subst_type_exp app_tac.
-    + let app_tac := (apply t_lop with (sz := sz)) in
-      subst_type_exp app_tac.
-  - let app_tac := (apply t_uop) in
-    subst_type_exp app_tac.
-  - let app_tac := (apply t_cast with (nat5 := nat0)) in
-    subst_type_exp app_tac.
+  - inversion te.
+    match goal with H : Nth nil _ _ |- _ => inversion H end.
+  -  inversion te.
+     subst.
+     repeat match goal with
+       H : _;_ |-- ?e ::: _,
+         IH : context[_;_ |-- ?e ::: _ -> _]
+       |- _ =>
+       apply IH in H;
+         destruct H;
+         clear IH;
+         auto
+     end.
+     + match goal with
+         H : is_val_of_exp ?e |- _ =>
+         destruct e;
+           inversion H;
+           clear H
+       end;
+       match goal with
+         H : is_val_of_exp ?e |- _ =>
+         destruct e;
+           inversion H;
+           clear H
+       end;
+       try now (inversion te;
+           match goal with
+             | H : _;_|-- [m: _, _ <- _ @ _] ::: type_imm _ |- _ =>
+               inversion H
+             | H : _;_|-- exp_int _ ::: type_mem _ _ |- _ =>
+               inversion H
+           end).
+       * inversion te.
+         subst.
+         destruct (Sized_Word.eq_word w word5).
+         inversion H11.
+         subst.
+         eexists.
+         destruct (Nat.eq_dec nat5 sz1).
+         subst.
+         apply step_load_byte; auto.
+         assert (nat5 > sz1) ...
+         fail.
+         Search (Sized_Word.eq_word).
+         destruct (word_eq w word5).
+         inversion H11.
+         subst.
+         destruct (word_eq (
+       * eexists.
+         apply step_load_un_mem; simpl; auto.
+       * inversion te.
+         subst.
+         inversion H12.
+         subst.
+         give_up. (* TODO: other complicated case *)
+       * eexists.
+         apply step_load_un_mem; simpl; auto.
+     + match goal with
+         H : exists _, exp_step _ _ _ |- _ =>
+         destruct H
+       end;
+         eexists;
+         apply step_load_step_mem;
+         eassumption.
+     + match goal with
+         H : exists _, exp_step _ _ _ |- _ =>
+         destruct H
+       end;
+         eexists;
+         (* TODO: order of eval for load is right to left; is this intended? *)
+         apply step_load_step_addr;
+         eassumption.
+     + repeat match goal with
+         H : exists _, exp_step _ _ _ |- _ =>
+         destruct H
+       end;
+         eexists;
+         (* TODO: order of eval for load is right to left; is this intended? *)
+         apply step_load_step_addr;
+         eassumption.
   -
- *)
+
 Ltac get_var_from_type_subst_goal :=
   match goal with
     [ |- _ |-- ?e ::: _] =>
