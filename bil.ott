@@ -322,6 +322,9 @@ formula :: formula_ ::=
  | ( formula )              :: M :: paren {{ coq ([[formula]]) }}
  | v1 <> v2                 :: M :: exp_neq {{ coq ([[v1]] <> [[v2]]) }}
  | var1 <> var2             :: M :: exp_var {{ coq ([[var1]] <> [[var2]]) }}
+ | w1 .<> w2                 :: M :: word_neq
+ {{ tex [[w1]] <> [[w2]] }}
+ {{ coq ([[w1]] <> [[w2]]) }}
  | nat1 > nat2              :: M :: nat_gt {{ coq ([[nat1]] > [[nat2]])}}
  | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
@@ -687,7 +690,7 @@ defns reduce_exp :: '' ::=
 
  w1 <> w2
  ----------------------------------------------------------- :: load_byte_from_next
- delta |- v[w1 <- w':sz][w2,ed]:sz ~> v[w2,ed]:sz
+ delta |- v[w1 <- v':sz][w2,ed]:sz ~> v[w2,ed]:sz
 
  ---------------------------------------------------------- :: load_un_mem
  delta |- (unknown[str]:t)[v,ed]:sz ~> unknown[str]:imm<sz>
@@ -838,12 +841,20 @@ defns reduce_exp :: '' ::=
  delta |- w1 xor w2 ~> w1 .xor w2
 
 
- ----------------------------------------------- :: eq
+ ----------------------------------------------- :: eq_same
  delta |- w = w ~> true
 
+ w1 .<> w2
+ ----------------------------------------------- :: eq_diff
+ delta |- w1 = w2 ~> false
 
- ----------------------------------------------- :: neq
+
+ ----------------------------------------------- :: neq_same
  delta |- w <> w ~> false
+
+ w1 .<> w2
+ ----------------------------------------------- :: neq_diff
+ delta |- w1 <> w2 ~> true
 
 
  ----------------------------------------------- :: less
