@@ -191,6 +191,9 @@ grammar
         {{ tex [[w1]] \stackrel{sbv} < [[w2]] }}
         {{ com -- signed less than }}
         {{ coq (sw_slt [[w1]] [[w2]]) }}
+   | .- w                                       :: S    :: lneg
+        {{ tex \stackrel{bv} - [[w]] }}
+        {{ coq (sw_lift_uop wneg [[w]]) }}
    | .~ w                                       :: S    :: lnot
         {{ tex \stackrel{bv} ~ [[w]] }}
         {{ coq (sw_lift_uop wnot [[w]]) }}
@@ -883,6 +886,9 @@ defns reduce_exp :: '' ::=
 
  ---------------------------------------- :: not
  delta |- ~ w ~> .~ w
+
+ ---------------------------------------- :: neg
+ delta |- - w ~> .- w
 
  delta |- e2 ~> e2'
  ---------------------------------------- :: concat_rhs

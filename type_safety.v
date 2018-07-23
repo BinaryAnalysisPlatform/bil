@@ -1715,6 +1715,11 @@ Proof.
     unify_sizes.
     solve_type_rule.
   - destruct_all word.
+    simpl.
+    rewrite <- Word.natToWord_wordToNat with (w := Word.wneg w).
+    unify_sizes.
+    solve_type_rule.
+  - destruct_all word.
     unify_sizes.
     solve_type_rule.
   - destruct_all word.
@@ -2110,6 +2115,7 @@ Proof.
            subst;
            eexists.
          fail.
+         apply step_not.
          solve [ apply step_not_true
                | apply step_not_false].
 
