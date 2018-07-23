@@ -1710,6 +1710,11 @@ Proof.
         destruct c; solve_type_rule
       end.
   - destruct_all word.
+    simpl.
+    rewrite <- Word.natToWord_wordToNat with (w := Word.wnot w).
+    unify_sizes.
+    solve_type_rule.
+  - destruct_all word.
     unify_sizes.
     solve_type_rule.
   - destruct_all word.
@@ -1881,6 +1886,83 @@ Proof.
   eapply IHd; eauto.
 Qed.
 
+Lemma exists_succ : forall w, exists w', succ w (exp_int w').
+Proof.
+  intro w.
+  destruct w.
+  normalize_words.
+  rewrite <- Word.natToWord_wordToNat with (w := w).
+  eexists; constructor.
+Qed.
+
+Lemma word_inversion1 : forall {sz1 sz2} (w1 : bbv sz1) (w2 : bbv sz2),
+    sized w1 = sized w2 -> sz1 = sz2.
+Proof.
+  intros sz1 sz2 w1 w2 szeq.
+  inversion szeq.
+  apply projT1_eq in H1.
+  simpl in H1.
+  reflexivity.
+Qed.
+Lemma word_inversion2 : forall {sz} (w1 w2 : bbv sz), sized w1 = sized w2 -> w1 = w2.
+Proof.
+  intros sz w1 w2 szeq.
+  apply exist_inj.
+  exact Nat.eq_dec.
+  exact Word.weq.
+  unfold sized in szeq.
+  unfold bbv.
+  change Word.word with (fun sz => Word.word sz).
+  assumption.
+Qed.
+
+
+Ltac omega_plus :=
+  repeat match goal with
+           |- context[?a * ?b] =>
+           let x := fresh in remember (a * b) as x
+         end;
+  omega.
+
+Ltac exp_progress_step rule :=
+  repeat match goal with
+    H : exists _, exp_step _ _ _ |- _ =>
+    destruct H
+  end;
+  eexists;
+  apply rule;
+  eassumption.
+
+Ltac exp_progress_unknown rule :=
+  eexists; apply rule; simpl; auto.
+
+Ltac invert_is_value :=
+  match goal with
+    H : is_val_of_exp ?e |- _ =>
+    destruct e;
+    inversion H;
+    clear H
+  end.
+
+Ltac inversion_with_values type_exp :=
+  inversion type_exp;
+  match goal with
+  | H : _;_|-- [m: _, _ <- _ @ _] ::: type_imm _ |- _ =>
+    inversion H
+  | H : _;_|-- exp_int _ ::: type_mem _ _ |- _ =>
+    inversion H
+  end.
+
+Ltac exp_progress_case_subterms_values :=
+     repeat match goal with
+       H : _;_ |-- ?e ::: _,
+         IH : context[_;_ |-- ?e ::: _ -> _]
+       |- _ =>
+       apply IH in H;
+         destruct H;
+         clear IH;
+         auto
+     end.
 
 Lemma exp_progress : forall d e t,
     type_delta d ->
@@ -1905,83 +1987,131 @@ Proof.
     match goal with H : Nth nil _ _ |- _ => inversion H end.
   -  inversion te.
      subst.
-     repeat match goal with
-       H : _;_ |-- ?e ::: _,
-         IH : context[_;_ |-- ?e ::: _ -> _]
-       |- _ =>
-       apply IH in H;
-         destruct H;
-         clear IH;
-         auto
-     end.
-     + match goal with
-         H : is_val_of_exp ?e |- _ =>
-         destruct e;
-           inversion H;
-           clear H
-       end;
-       match goal with
-         H : is_val_of_exp ?e |- _ =>
-         destruct e;
-           inversion H;
-           clear H
-       end;
-       try now (inversion te;
-           match goal with
-             | H : _;_|-- [m: _, _ <- _ @ _] ::: type_imm _ |- _ =>
-               inversion H
-             | H : _;_|-- exp_int _ ::: type_mem _ _ |- _ =>
-               inversion H
-           end).
+     exp_progress_case_subterms_values.
+     + invert_is_value;
+         invert_is_value;
+         try now inversion_with_values te.
        * inversion te.
          subst.
-         destruct (Sized_Word.eq_word w word5).
-         inversion H11.
-         subst.
-         eexists.
          destruct (Nat.eq_dec nat5 sz1).
-         subst.
-         apply step_load_byte; auto.
-         assert (nat5 > sz1) ...
-         fail.
-         Search (Sized_Word.eq_word).
-         destruct (word_eq w word5).
-         inversion H11.
-         subst.
-         destruct (word_eq (
-       * eexists.
-         apply step_load_un_mem; simpl; auto.
+         -- destruct (Sized_Word.eq_word w word5);
+              [| destruct_all word; normalize_words];
+              match goal with
+                H : _;_ |-- [m:_, _ <- _ @ _] ::: _ |- _ =>
+                inversion H
+              end; subst; eexists;
+                [ apply step_load_byte; now auto
+                | apply step_load_byte_from_next; auto;
+                  let exp_int_eq := fresh "exp_int_eq" in
+                  let wd_eq := fresh "wd_eq" in
+                  let nat_eq := fresh "nat_eq" in
+                  intro exp_int_eq;
+                  injection exp_int_eq;
+                  clear exp_int_eq;
+                  intros wd_eq nat_eq;
+                  subst;
+                  match goal with
+                    Hn : ?a <> ?b, Ha : ?c = ?a, Hb : ?c = ?b |- _ =>
+                    rewrite <- Ha in Hn;
+                    rewrite <- Hb in Hn
+                  end;
+                  contradiction].
+         -- match goal with
+              H : ?n <> ?sz |- _ =>
+              assert (n > sz) by
+                  (destruct_existentials;
+                   match goal with
+                     H : ?n = ?x * ?sz |- ?n > ?sz =>
+                     destruct x; [omega|];
+                     destruct x; simpl in H; [omega|];
+                     rewrite H
+                   end;
+                   omega_plus)
+            end;
+              let esucc := fresh "esucc" in
+              pose proof exists_succ as esucc;
+                specialize esucc with (w := word5);
+                destruct esucc;
+                destruct_all endian;
+                eexists;
+                [ eapply step_load_word_el;
+                  simpl; eauto; destruct_all word
+                | eapply step_load_word_be; simpl; auto; eauto];
+                inversion H11; auto.
+       * exp_progress_unknown step_load_un_mem.
        * inversion te.
          subst.
-         inversion H12.
-         subst.
+         match goal with
+           H : _;_|-- exp_unk _ _ ::: _ |- _=>
+           inversion H
+         end; subst.
          give_up. (* TODO: other complicated case *)
-       * eexists.
-         apply step_load_un_mem; simpl; auto.
-     + match goal with
-         H : exists _, exp_step _ _ _ |- _ =>
-         destruct H
-       end;
-         eexists;
-         apply step_load_step_mem;
-         eassumption.
-     + match goal with
-         H : exists _, exp_step _ _ _ |- _ =>
-         destruct H
-       end;
-         eexists;
-         (* TODO: order of eval for load is right to left; is this intended? *)
-         apply step_load_step_addr;
-         eassumption.
-     + repeat match goal with
-         H : exists _, exp_step _ _ _ |- _ =>
-         destruct H
-       end;
-         eexists;
-         (* TODO: order of eval for load is right to left; is this intended? *)
-         apply step_load_step_addr;
-         eassumption.
-  -
+       * exp_progress_unknown step_load_un_mem.
+     + exp_progress_step step_load_step_mem.
+     + exp_progress_step step_load_step_addr.
+     + exp_progress_step step_load_step_addr.
+  - give_up.
+  - inversion te;
+      subst;
+      exp_progress_case_subterms_values.
+    + invert_is_value;
+        try now inversion_with_values te.
+      invert_is_value;
+        try now inversion_with_values te.
+      * destruct_all aop;
+          eexists;
+          solve [ apply step_plus
+                | apply step_minus
+                | apply step_times
+                | apply step_div
+                | apply step_sdiv
+                | apply step_mod
+                | apply step_smod
+                | apply step_land
+                | apply step_lor
+                | apply step_xor
+                | apply step_lsl
+                | apply step_lsr
+                | apply step_asr].
+       * exp_progress_unknown step_aop_unk_lhs.
+       * exp_progress_unknown step_aop_unk_rhs.
+    + exp_progress_step step_bop_lhs.
+    + exp_progress_step step_bop_rhs.
+    + exp_progress_step step_bop_lhs.
+    + invert_is_value;
+        try now inversion_with_values te.
+      invert_is_value;
+        try now inversion_with_values te.
+      * destruct_all lop;
+        inversion te;
+          [destruct (eq_word word0 word5); subst
+          | destruct (eq_word word0 word5); subst | | | |];
+          eexists;
+          solve [ apply step_eq_same
+                | apply step_eq_diff; assumption
+                | apply step_neq_same
+                | apply step_neq_diff; assumption
+                | apply step_less
+                | apply step_less_eq
+                | apply step_signed_less
+                | apply step_signed_less_eq].
+      * exp_progress_unknown step_lop_unk_lhs.
+      * exp_progress_unknown step_lop_unk_rhs.
+    + exp_progress_step step_bop_lhs.
+    + exp_progress_step step_bop_rhs.
+    + exp_progress_step step_bop_lhs.
+  -  inversion te;
+      subst;
+      exp_progress_case_subterms_values.
+     + invert_is_value;
+         try now inversion_with_values te.
+       * destruct_all uop;
+           inversion te;
+           subst;
+           eexists.
+         fail.
+         solve [ apply step_not_true
+               | apply step_not_false].
 
 Ltac get_var_from_type_subst_goal :=
   match goal with

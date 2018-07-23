@@ -118,6 +118,10 @@ Qed.
 Definition sw_lt : sized_word -> sized_word -> sized_word := sw_lift_cmpop wlt wlt_dec.
 Definition sw_slt : sized_word -> sized_word -> sized_word := sw_lift_cmpop wslt wslt_dec.
 
+Definition sw_lift_uop (uop : forall sz, word sz -> word sz) (w : sized_word) : sized_word :=
+  let (sz, w') := w in
+  sized (uop sz w').
+
 Require Import Omega.
 
 Fixpoint ext'_lo {sz} (w : word sz) (lo : nat) : word (sz - lo).
