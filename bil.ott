@@ -884,6 +884,9 @@ defns reduce_exp :: '' ::=
  ---------------------------------------- :: uop
  delta |- uop e ~> uop e'
 
+ ------------------------------------------------ :: uop_unk
+ delta |- uop unknown[str] : t ~> unknown[str] : t
+
  ---------------------------------------- :: not
  delta |- ~ w ~> .~ w
 
@@ -925,6 +928,8 @@ defns reduce_exp :: '' ::=
  --------------------------------- :: cast_reduce
  delta |- cast:sz[e] ~> cast:sz[e']
 
+ ------------------------------------------------------------ :: cast_unk
+ delta |- cast:sz[unknown[str] : t] ~> unknown[str] : imm<sz>
 
  -------------------------------------------- :: cast_low
  delta |- low:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
@@ -939,6 +944,7 @@ defns reduce_exp :: '' ::=
 
  -------------------------------------------------- :: cast_unsigned
  delta |- unsigned:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
+
 
 
 defns multistep_exp :: '' ::=

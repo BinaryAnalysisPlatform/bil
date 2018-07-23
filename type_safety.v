@@ -1949,6 +1949,14 @@ Ltac invert_is_value :=
     clear H
   end.
 
+Ltac invert_is_value_expr e :=
+  match goal with
+    H : is_val_of_exp e |- _ =>
+    destruct e;
+    inversion H;
+    clear H
+  end.
+
 Ltac inversion_with_values type_exp :=
   inversion type_exp;
   match goal with
@@ -1962,6 +1970,17 @@ Ltac exp_progress_case_subterms_values :=
      repeat match goal with
        H : _;_ |-- ?e ::: _,
          IH : context[_;_ |-- ?e ::: _ -> _]
+       |- _ =>
+       apply IH in H;
+         destruct H;
+         clear IH;
+         auto
+     end.
+
+Ltac exp_progress_case_subterm_value e :=
+     repeat match goal with
+       H : _;_ |-- e ::: _,
+         IH : context[_;_ |-- e ::: _ -> _]
        |- _ =>
        apply IH in H;
          destruct H;
@@ -2113,11 +2132,121 @@ Proof.
        * destruct_all uop;
            inversion te;
            subst;
-           eexists.
-         fail.
-         apply step_not.
-         solve [ apply step_not_true
-               | apply step_not_false].
+           eexists;
+           solve [ apply step_neg
+                 | apply step_not].
+       * exp_progress_step step_uop_unk.
+     + exp_progress_step step_uop.
+  - inversion te;
+      subst;
+      exp_progress_case_subterms_values;
+      try invert_is_value;
+      try now inversion_with_values te.
+    + destruct_all cast;
+        eexists;
+        solve [  match goal with
+                  H : is_widen_cast_of_cast _ |- _ =>
+                  inversion H
+                end
+              | apply step_cast_signed
+              | apply step_cast_unsigned].
+    + exp_progress_unknown step_cast_unk.
+    + exp_progress_step step_cast_reduce.
+    + destruct_all cast.
+      eexists.
+      apply step_cast_low.
+      destruct_all word.
+      rewrite <- Word.natToWord_wordToNat with (w := w).
+      normalize_words.
+      eexists.
+      apply step_cast_high.
+      match goal with
+        H : is_narrow_cast_of_cast _ |- _ =>
+        inversion H
+      end.
+      match goal with
+        H : is_narrow_cast_of_cast _ |- _ =>
+        inversion H
+      end.
+    + exp_progress_unknown step_cast_unk.
+    + exp_progress_step step_cast_reduce.
+  - inversion te;
+      subst;
+      exp_progress_case_subterms_values.
+    eexists.
+    apply step_let_subst; auto.
+    destruct_existentials.
+    eexists.
+    apply step_let_step; eauto.
+  - inversion te;
+      subst.
+    let H' := fresh in
+    pose proof H4 as H'.
+    exp_progress_case_subterm_value e1.
+    invert_is_value_expr e1.
+    inversion H4.
+
+    Lemma invert_no_bit : forall (P : Word.word 0 -> Prop),
+        P Word.WO -> forall (w : Word.word 0), P w.
+    Proof.
+      intros p PO w.
+      refine (match w with Word.WO => _ | Word.WS _ _ => _ end).
+      assumption.
+      exact idProp.
+    Qed.
+
+    Lemma invert_single_bit : forall (P : Word.word 1 -> Prop),
+        P (Word.WS false Word.WO) ->
+        P (Word.WS true Word.WO) ->
+        forall (w : Word.word 1), P w.
+    Proof.
+      intros P P0 P1 w.
+      refine (match w with Word.WO => _
+                      | Word.WS b w' => _ end).
+      exact idProp.
+      dependent inversion b;
+        destruct n; try exact idProp;
+        [ apply invert_no_bit with (P := fun w => P (Word.WS true w))
+        | apply invert_no_bit with (P := fun w => P (Word.WS false w))];
+        assumption.
+      Qed.
+    
+    destruct num5.
+    
+  - inversion te;
+      subst;
+      exp_progress_case_subterms_values;
+      [invert_is_value;
+       try now inversion_with_values te|].
+    eexists.
+    apply step_extract.
+    eexists.
+    apply step_extract_un.
+    exp_progress_step step_extract_reduce.
+  - inversion te;
+      subst;
+      exp_progress_case_subterms_values.
+    invert_is_value;
+       try now inversion_with_values te.
+    invert_is_value;
+       try now inversion_with_values te.
+    eexists.
+    now apply step_concat.
+    inversion te;
+    inversion H4; subst.
+    now exp_progress_unknown step_concat_lhs_un.
+    inversion te; subst.
+    inversion H6; subst.
+    exp_progress_unknown step_concat_rhs_un.
+    now eapply compute_faithful; eauto.
+    now exp_progress_step step_concat_lhs.
+    now exp_progress_step step_concat_rhs.
+    now exp_progress_step step_concat_rhs.
+    Unshelve.
+    (* TODO: why is this here? a little strange *)
+    repeat constructor.
+    repeat constructor.
+Qed.
 
 Ltac get_var_from_type_subst_goal :=
   match goal with
