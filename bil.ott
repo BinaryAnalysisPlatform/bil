@@ -221,9 +221,8 @@ formula :: formula_ ::=
  | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
  | nat1 % sz = 0            :: M :: nat_mod_z {{ coq (exists n_, [[nat1]] = n_ * [[sz]]) }}
- | compute_type v = t       :: M :: compute_type_of_v
- {{ coq (compute_type [[v]] = [[t]]) }}
- {{ tex [[type]] ( [[v]] ) = [[t]] }}
+ | t1 = t2       :: M :: type_eq
+ {{ coq ([[t1]] = [[t2]]) }}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
  | ( var , val ) isin delta   :: M :: in_env
@@ -249,9 +248,17 @@ terminals :: terminals_ ::=
   | isin        :: :: in {{ tex \in }}
   | notin     :: :: notin {{ tex \notin }}
 
-
 subrules
   val <:: exp
+
+funs
+  Compute ::=
+fun
+  type ( v ) :: t :: compute_type {{ com a function that computes the type of a value }}
+by
+  type(v[num1:nat <- v' : sz]) === mem<nat,sz>
+  type(num:nat) === imm<nat>
+  type(unknown[str]:t) === t
 
 defns typing_type :: '' ::=
  defn t is ok :: :: type_wf :: twf_ by
@@ -483,13 +490,13 @@ defns reduce_exp :: '' ::=
 
  sz' > sz
  succ w = w'
- compute_type v = mem<nat,sz>
+ type(v) = mem<nat,sz>
  ------------------------------------------------------------- :: load_word_be
  delta |- v[w,be]:sz' ~> v[w,be]:sz @ (v[w', be]:(sz'-sz))
 
  sz' > sz
  succ w = w'
- compute_type v = mem<nat,sz>
+ type(v) = mem<nat,sz>
  -------------------------------------------------------- :: load_word_el
  delta |- v[w,el]:sz' ~> v[w',el]:(sz'-sz) @ (v[w,be]:sz)
 
@@ -515,27 +522,27 @@ defns reduce_exp :: '' ::=
 
  sz' > sz
  succ w = w'
- compute_type v = mem<nat,sz>
+ type(v) = mem<nat,sz>
  e1 :=def (v with [w,be]:sz <- high:sz[val])
  ---------------------------------------------------------------------------------- :: store_word_be
  delta |- v with [w,be]:sz' <- val ~> e1 with [w',be]:(sz'-sz) <- low:(sz'-sz)[val]
 
  sz' > sz
  succ w = w'
- compute_type v = mem<nat,sz>
+ type(v) = mem<nat,sz>
  e1 :=def (v with [w,el]:sz <- low:sz[val])
  -------------------------------------------------------------------------------- :: store_word_el
  delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
- compute_type v = mem<nat,sz'>
+ type(v) = mem<nat,sz'>
  -------------------------------------------------------------- :: store_val
  delta |- v with [num:sz,ed] : sz' <- w' ~> v[num:sz <- w' : sz']
 
- compute_type v = mem<nat,sz'>
+ type(v) = mem<nat,sz'>
  ----------------------------------------------------------------------------------------- :: store_un
  delta |- v with [num:sz,ed] : sz' <- unknown[str]:t ~> v[num:sz <- unknown[str]:t : sz']
 
- compute_type v = mem<nat,sz>
+ type(v) = mem<nat,sz>
  --------------------------------------------------------------------------------- :: store_un_addr
  delta |- v with [unknown[str]:imm<nat>,ed] : sz' <- v2 ~> unknown[str]:mem<nat,sz>
 
@@ -673,11 +680,11 @@ defns reduce_exp :: '' ::=
  ---------------------------------------- :: concat_lhs
  delta |- e1 @ v2 ~> e1' @ v2
 
- compute_type v2 = imm<sz2>
+ type(v2) = imm<sz2>
  ----------------------------------------------------------------- :: concat_lhs_un
  delta |- unknown[str]:imm<sz1> @ v2 ~> unknown[str]:imm<sz1 +sz2>
 
- compute_type v1 = imm<sz1>
+ type(v1) = imm<sz1>
  ---------------------------------------------------------------- :: concat_rhs_un
  delta |- v1 @ unknown[str]:imm<sz2> ~> unknown[str]:imm<sz1 +sz2>
 
