@@ -755,9 +755,9 @@ defns reduce_exp :: '' ::=
  --------------------------------------------------------- :: store_val
  delta |- v with [w,ed] : sz <- v' ~> v[w <- v' : sz]
 
- compute_type v = mem<nat,sz>
- --------------------------------------------------------------------------------- :: store_un_addr
- delta |- v with [unknown[str]:imm<nat>,ed] : sz' <- v2 ~> unknown[str]:mem<nat,sz>
+ compute_type v = t
+ -------------------------------------------------------------------- :: store_un_addr
+ delta |- v with [unknown[str]:t',ed] : sz' <- v2 ~> unknown[str]:t
 
  delta |- e1 ~> e1'
  --------------------------------------------------------- :: let_step

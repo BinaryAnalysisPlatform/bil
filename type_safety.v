@@ -1308,6 +1308,8 @@ Proof.
     normalize_words.
     rewrite <- Word.natToWord_wordToNat with (w := w).
     solve_type_rule.
+  - erewrite compute_faithful; eauto.
+    solve_type_rule.
   - rewrite <- app_nil_l with (l := nil).
     eapply letsubst_type; eauto.
   - (* TODO: this case is currently broken since it's impossible to
@@ -1773,7 +1775,6 @@ Proof.
     inversion H15; subst.
     eexists.
     eapply step_store_un_addr; eauto.
-    eapply compute_faithful; inversion te; subst; eauto.
   - inversion te;
       subst;
       exp_progress_case_subterms_values.
