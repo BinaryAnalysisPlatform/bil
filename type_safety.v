@@ -1677,6 +1677,9 @@ Proof.
       solve_type_rule_using tac.
   - rewrite <- app_nil_l with (l := nil).
     eapply letsubst_type; eauto.
+  - (* TODO: this case is currently broken since it's impossible to
+       recover the type of the term without notable changes *)
+    match goal with |- context [type_imm 0] => give_up end.
   - unfold sw_lt.
     destruct_all word.
       unify_sizes.
@@ -1821,7 +1824,7 @@ Proof.
       rewrite <- Word.natToWord_wordToNat with (w := w')
     end.
     solve_type_rule.
-Qed.
+Admitted.
 
 Lemma Nth_Nth_eq : forall {A : Set} l n (a a' : A),
     Nth l n a -> Nth l n a' -> a = a'.
@@ -1987,6 +1990,31 @@ Ltac exp_progress_case_subterm_value e :=
          clear IH;
          auto
      end.
+
+Lemma invert_no_bit : forall (P : Word.word 0 -> Prop),
+    P Word.WO -> forall (w : Word.word 0), P w.
+Proof.
+  intros p PO w.
+  refine (match w with Word.WO => _ | Word.WS _ _ => _ end).
+  assumption.
+  exact idProp.
+Qed.
+
+Lemma invert_single_bit : forall (P : Word.word 1 -> Prop),
+    P (Word.WS false Word.WO) ->
+    P (Word.WS true Word.WO) ->
+    forall (w : Word.word 1), P w.
+Proof.
+  intros P P0 P1 w.
+  refine (match w with Word.WO => _
+                  | Word.WS b w' => _ end).
+  exact idProp.
+  dependent inversion b;
+    destruct n; try exact idProp;
+      [ apply invert_no_bit with (P := fun w => P (Word.WS true w))
+      | apply invert_no_bit with (P := fun w => P (Word.WS false w))];
+      assumption.
+Qed.
 
 Lemma exp_progress : forall d e t,
     type_delta d ->
@@ -2185,34 +2213,16 @@ Proof.
     exp_progress_case_subterm_value e1.
     invert_is_value_expr e1.
     inversion H4.
-
-    Lemma invert_no_bit : forall (P : Word.word 0 -> Prop),
-        P Word.WO -> forall (w : Word.word 0), P w.
-    Proof.
-      intros p PO w.
-      refine (match w with Word.WO => _ | Word.WS _ _ => _ end).
-      assumption.
-      exact idProp.
-    Qed.
-
-    Lemma invert_single_bit : forall (P : Word.word 1 -> Prop),
-        P (Word.WS false Word.WO) ->
-        P (Word.WS true Word.WO) ->
-        forall (w : Word.word 1), P w.
-    Proof.
-      intros P P0 P1 w.
-      refine (match w with Word.WO => _
-                      | Word.WS b w' => _ end).
-      exact idProp.
-      dependent inversion b;
-        destruct n; try exact idProp;
-        [ apply invert_no_bit with (P := fun w => P (Word.WS true w))
-        | apply invert_no_bit with (P := fun w => P (Word.WS false w))];
-        assumption.
-      Qed.
+    subst.
+    apply invert_single_bit with (w := Word.natToWord 1 num5).
     
-    destruct num5.
-    
+    eexists.
+    apply step_ite_false.
+    eexists.
+    apply step_ite_true.
+    inversion H4.
+    exp_progress_unknown step_ite_unk.
+    exp_progress_step step_ite_step.
   - inversion te;
       subst;
       exp_progress_case_subterms_values;

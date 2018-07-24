@@ -779,6 +779,8 @@ defns reduce_exp :: '' ::=
  ------------------------------------------------ :: ite_false
  delta |- if false then e2 else e3 ~> e3
 
+ ------------------------------------------------------------------ :: ite_unk
+ delta |- if unknown[str]:t then e2 else e3 ~> unknown[str]:imm<0>
 
  delta |- e2 ~> e2'
  ------------------------------------------ :: bop_rhs
