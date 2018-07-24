@@ -701,6 +701,10 @@ defns reduce_exp :: '' ::=
  ---------------------------------------------------------- :: load_un_mem
  delta |- (unknown[str]:t)[v,ed]:sz ~> unknown[str]:imm<sz>
 
+
+ ------------------------------------------------------------------------- :: load_un_addr
+ delta |- (v[w1 <- v':sz])[unknown[str]:t,ed]:sz' ~> unknown[str]:imm<sz'>
+
  sz' > sz
  succ w = w'
  compute_type v = mem<nat,sz>
@@ -747,13 +751,9 @@ defns reduce_exp :: '' ::=
  -------------------------------------------------------------------------------- :: store_word_el
  delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
- compute_type v = mem<nat,sz'>
- -------------------------------------------------------------- :: store_val
- delta |- v with [num:sz,ed] : sz' <- w' ~> v[num:sz <- w' : sz']
-
- compute_type v = mem<nat,sz'>
- ----------------------------------------------------------------------------------------- :: store_un
- delta |- v with [num:sz,ed] : sz' <- unknown[str]:t ~> v[num:sz <- unknown[str]:t : sz']
+ compute_type v = mem<nat,sz>
+ --------------------------------------------------------- :: store_val
+ delta |- v with [w,ed] : sz <- v' ~> v[w <- v' : sz]
 
  compute_type v = mem<nat,sz>
  --------------------------------------------------------------------------------- :: store_un_addr
