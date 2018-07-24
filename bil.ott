@@ -125,12 +125,20 @@ grammar
    | w1 .<$ w2                                   :: S    :: signed_less
         {{ tex [[w1]] \stackrel{sbv} < [[w2]] }}
         {{ com -- signed less than }}
+   | .- w                                       :: S    :: lneg
+        {{ tex \stackrel{bv} - [[w]] }}
+        {{ com -- integer negation }}
+   | .~ w                                       :: S    :: lnot
+        {{ tex \stackrel{bv}{\sim} [[w]] }}
+        {{ com -- logical negation }}
    | w1 .@ w2                                   :: S    :: concat
         {{ tex [[w1]] \stackrel{bv} . [[w2]] }}
         {{ com -- concatenation }}
-   | ext word ~hi : sz1 ~lo : sz2           :: S    :: extend_extract
+   | ext w ~ hi : sz1 ~ lo : sz2           :: S    :: extend_extract
+        {{ tex [[ext]]\; [[w]] \sim [[hi]] : [[sz1]] \sim [[lo]] : [[sz2]] }}
         {{ com -- extract/extend }}
-   | exts word ~hi : sz1 ~lo : sz2         :: S    :: extend_extract_signed
+   | exts w ~ hi : sz1 ~ lo : sz2         :: S    :: extend_extract_signed
+        {{ tex [[exts]]\; [[w]] \sim [[hi]] : [[sz1]] \sim [[lo]] : [[sz2]] }}
         {{ com -- signed extract/extend }}
 
 
@@ -193,6 +201,14 @@ grammar
    | unsigned                                   ::      :: unsigned
    {{ com -- extend with zero}}
 
+ widen_cast :: wcast_ ::=
+   | signed                                     ::      :: signed
+   | unsigned                                   ::      :: unsigned
+
+ narrow_cast :: ncast_ ::=
+   | low                                        ::      :: low
+   | high                                       ::      :: high
+
  type,t :: type_ ::=
    | imm < sz >                                 ::      :: imm
    {{ com -- immediate of size $sz$}}
@@ -217,6 +233,8 @@ formula :: formula_ ::=
  | ( formula )              :: M :: paren {{ coq ([[formula]]) }}
  | v1 <> v2                 :: M :: exp_neq {{ coq ([[v1]] <> [[v2]]) }}
  | var1 <> var2             :: M :: exp_var {{ coq ([[var1]] <> [[var2]]) }}
+ | w1 .<> w2                 :: M :: word_neq
+ {{ tex [[w1]] <> [[w2]] }}
  | nat1 > nat2              :: M :: nat_gt {{ coq ([[nat1]] > [[nat2]])}}
  | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
@@ -250,6 +268,8 @@ terminals :: terminals_ ::=
 
 subrules
   val <:: exp
+  widen_cast <:: cast
+  narrow_cast <:: cast
 
 funs
   Compute ::=
@@ -337,12 +357,17 @@ defns typing_exp :: '' ::=
  ---------------------------------- :: uop
  G |- uop e1 :: imm<sz>
 
+ sz > 0
+ sz >= nat
+ G |- e :: imm<nat>
+ ------------------------------------- :: cast_widen
+ G |- widen_cast:sz[e] :: imm<sz>
 
  sz > 0
+ nat >= sz
  G |- e :: imm<nat>
- --------------------- :: cast
- G |- cast:sz[e] :: imm<sz>
-
+ ------------------------------------- :: cast_narrow
+ G |- narrow_cast:sz[e] :: imm<sz>
 
  G |- e1  :: t
  G, id:t |- e2  :: t'
@@ -479,14 +504,17 @@ defns reduce_exp :: '' ::=
  delta |- e1[v2,ed]:sz ~> e1'[v2,ed]:sz
 
  ------------------------------------------------------ :: load_byte
- delta |- v[w <- w':sz][w,ed']:sz ~> w'
+ delta |- v[w <- v':sz][w,ed']:sz ~> v'
 
  w1 <> w2
  ----------------------------------------------------------- :: load_byte_from_next
- delta |- v[w1 <- w':sz][w2,ed]:sz ~> v[w2,ed]:sz
+ delta |- v[w1 <- v':sz][w2,ed]:sz ~> v[w2,ed]:sz
 
  ---------------------------------------------------------- :: load_un_mem
  delta |- (unknown[str]:t)[v,ed]:sz ~> unknown[str]:imm<sz>
+
+ ------------------------------------------------------------------------- :: load_un_addr
+ delta |- (v[w1 <- v':sz])[unknown[str]:t,ed]:sz' ~> unknown[str]:imm<sz'>
 
  sz' > sz
  succ w = w'
@@ -534,17 +562,13 @@ defns reduce_exp :: '' ::=
  -------------------------------------------------------------------------------- :: store_word_el
  delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
- type(v) = mem<nat,sz'>
- -------------------------------------------------------------- :: store_val
- delta |- v with [num:sz,ed] : sz' <- w' ~> v[num:sz <- w' : sz']
-
- type(v) = mem<nat,sz'>
- ----------------------------------------------------------------------------------------- :: store_un
- delta |- v with [num:sz,ed] : sz' <- unknown[str]:t ~> v[num:sz <- unknown[str]:t : sz']
-
  type(v) = mem<nat,sz>
- --------------------------------------------------------------------------------- :: store_un_addr
- delta |- v with [unknown[str]:imm<nat>,ed] : sz' <- v2 ~> unknown[str]:mem<nat,sz>
+ --------------------------------------------------------- :: store_val
+ delta |- v with [w,ed] : sz <- v' ~> v[w <- v' : sz]
+
+ type(v) = t
+ ----------------------------------------------------------------------- :: store_un_addr
+ delta |- v with [unknown[str]:t',ed] : sz' <- v2 ~> unknown[str]:t
 
  delta |- e1 ~> e1'
  ------------------------------------------------ :: let_step
@@ -565,7 +589,6 @@ defns reduce_exp :: '' ::=
 
  ------------------------------------------------ :: ite_false
  delta |- if false then e2 else e3 ~> e3
-
 
  delta |- e2 ~> e2'
  ------------------------------------------ :: bop_rhs
@@ -633,14 +656,20 @@ defns reduce_exp :: '' ::=
  ----------------------------------------------- :: xor
  delta |- w1 xor w2 ~> w1 .xor w2
 
-
- ----------------------------------------------- :: eq
+ ----------------------------------------------- :: eq_same
  delta |- w = w ~> true
 
+ w1 .<> w2
+ ----------------------------------------------- :: eq_diff
+ delta |- w1 = w2 ~> false
 
- ----------------------------------------------- :: neq
+
+ ----------------------------------------------- :: neq_same
  delta |- w <> w ~> false
 
+ w1 .<> w2
+ ----------------------------------------------- :: neq_diff
+ delta |- w1 <> w2 ~> true
 
  ----------------------------------------------- :: less
  delta |- w1 < w2 ~> w1 .< w2
@@ -663,13 +692,14 @@ defns reduce_exp :: '' ::=
  ---------------------------------------- :: uop
  delta |- uop e ~> uop e'
 
- ---------------------------------------- :: not_true
- delta |- ~true ~> false
+ ------------------------------------------------ :: uop_unk
+ delta |- uop unknown[str] : t ~> unknown[str] : t
 
+ ---------------------------------------- :: not
+ delta |- ~ w ~> .~ w
 
- ---------------------------------------- :: not_false
- delta |- ~false ~> true
-
+ ---------------------------------------- :: neg
+ delta |- - w ~> .- w
 
  delta |- e2 ~> e2'
  ---------------------------------------- :: concat_rhs
@@ -706,20 +736,22 @@ defns reduce_exp :: '' ::=
  --------------------------------- :: cast_reduce
  delta |- cast:sz[e] ~> cast:sz[e']
 
+ ------------------------------------------------------------ :: cast_unk
+ delta |- cast:sz[unknown[str] : t] ~> unknown[str] : imm<sz>
 
  -------------------------------------------- :: cast_low
  delta |- low:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
 
 
  ----------------------------------------------------------- :: cast_high
- delta |- high:sz[num:sz'] ~> ext num:sz' ~hi:sz' ~lo:(sz'-sz)
+ delta |- high:sz[num:sz'] ~> ext num:sz' ~hi:(sz'-1) ~lo:(sz'-sz)
 
 
  -------------------------------------------- :: cast_signed
  delta |- signed:sz[w] ~> exts w ~hi:(sz-1) ~lo:0
 
- -------------------------------------------- :: cast_unsigned
- delta |- unsigned:sz[w] ~> low:sz[w]
+ -------------------------------------------------- :: cast_unsigned
+ delta |- unsigned:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
 
 
 defns reduce_stmt :: '' ::=
