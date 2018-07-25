@@ -1312,9 +1312,8 @@ Proof.
     solve_type_rule.
   - rewrite <- app_nil_l with (l := nil).
     eapply letsubst_type; eauto.
-  - (* TODO: this case is currently broken since it's impossible to
-       recover the type of the term without notable changes *)
-    match goal with |- context [type_imm 0] => give_up end.
+  - erewrite compute_faithful; eauto.
+    solve_type_rule.
   - unfold sw_lt.
     destruct_all word.
       unify_sizes.
@@ -1459,7 +1458,7 @@ Proof.
       rewrite <- Word.natToWord_wordToNat with (w := w')
     end.
     solve_type_rule.
-Admitted.
+Qed.
 
 Lemma Nth_Nth_eq : forall {A : Set} l n (a a' : A),
     Nth l n a -> Nth l n a' -> a = a'.
@@ -1882,19 +1881,22 @@ Proof.
       subst.
     let H' := fresh in
     pose proof H4 as H'.
-    exp_progress_case_subterm_value e1.
+    exp_progress_case_subterms_values.
     invert_is_value_expr e1.
     inversion H4.
     subst.
     apply invert_single_bit with (w := Word.natToWord 1 num5).
     
     eexists.
-    apply step_ite_false.
+    apply step_ite_false; auto.
     eexists.
-    apply step_ite_true.
+    apply step_ite_true; auto.
+
     inversion H4.
     exp_progress_unknown step_ite_unk.
-    exp_progress_step step_ite_step.
+    all: solve [ exp_progress_step step_ite_step_cond
+                | exp_progress_step step_ite_step_then
+                | exp_progress_step step_ite_step_else].
   - inversion te;
       subst;
       exp_progress_case_subterms_values;
