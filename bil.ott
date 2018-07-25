@@ -53,7 +53,7 @@ grammar
    {{ com -- bind $e_1$ to $var$ in expression $e_2$}}
    | unknown [ string ] : type                  ::      :: unk
    {{ com -- unknown or undefined value of a given $type$ }}
-   | if e1 then e2 else e3                      ::      :: ite
+   | ite e1 e2 e3                      ::      :: ite
    {{ com -- evaluates to $e_2$ if $e_1$ is true else to $e_3$ }}
    | extract : nat1 : nat2 [ e ]                ::      :: ext
    {{ com -- extract or extend bitvector $e$}}
@@ -384,7 +384,7 @@ defns typing_exp :: '' ::=
  G |- e2 :: t
  G |- e3 :: t
  -------------------------- :: ite
- G |- if e1 then e2 else e3 :: t
+ G |- ite e1 e2 e3 :: t
 
  G |- e :: imm<sz>
  sz1 >= sz2
@@ -581,26 +581,26 @@ defns reduce_exp :: '' ::=
 
  delta |- e1 ~> e1'
  ------------------------------------------------------------------ :: ite_step_cond
- delta |- if e1 then v2 else v3 ~> if e1' then v2 else v3
+ delta |- ite e1 v2 v3 ~> ite e1' v2 v3
 
  delta |- e2 ~> e2'
  ------------------------------------------------------------------ :: ite_step_then
- delta |- if e1 then e2 else v3 ~> if e1 then e2' else v3
+ delta |- ite e1 e2 v3 ~> ite e1 e2' v3
 
  delta |- e3 ~> e3'
  ------------------------------------------------------------------ :: ite_step_else
- delta |- if e1 then e2 else e3 ~> if e1 then e2 else e3'
+ delta |- ite e1 e2 e3 ~> ite e1 e2 e3'
 
  ----------------------------------------------- :: ite_true
- delta |- if true then v2 else v3 ~> v2
+ delta |- ite true v2 v3 ~> v2
 
 
  ------------------------------------------------ :: ite_false
- delta |- if false then v2 else v3 ~> v3
+ delta |- ite false v2 v3 ~> v3
 
  type(v2) = t'
  ------------------------------------------------------------------ :: ite_unk
- delta |- if unknown[str]:t then v2 else v3 ~> unknown[str]:t'
+ delta |- ite unknown[str]:t v2 v3 ~> unknown[str]:t'
 
  delta |- e2 ~> e2'
  ------------------------------------------ :: bop_rhs
