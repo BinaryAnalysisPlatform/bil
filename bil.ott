@@ -97,7 +97,7 @@ grammar
    {{ com -- bind $e_1$ to $var$ in expression $e_2$}}
    | unknown [ string ] : type                  ::      :: unk
    {{ com -- unknown or undefined value of a given $type$ }}
-   | if e1 then e2 else e3                      ::      :: ite
+   | ite e1 e2 e3                      ::      :: ite
    {{ com -- evaluates to $e_2$ if $e_1$ is true else to $e_3$ }}
    | extract : nat1 : nat2 [ e ]                ::      :: ext
    {{ com -- extract or extend bitvector $e$}}
@@ -194,19 +194,24 @@ grammar
    | .- w                                       :: S    :: lneg
         {{ tex \stackrel{bv} - [[w]] }}
         {{ coq (sw_lift_uop wneg [[w]]) }}
+        {{ com -- integer negation }}
    | .~ w                                       :: S    :: lnot
-        {{ tex \stackrel{bv} ~ [[w]] }}
+        {{ tex \stackrel{bv}{\sim} [[w]] }}
+        {{ com -- logical negation }}
         {{ coq (sw_lift_uop wnot [[w]]) }}
+
    | w1 .@ w2                                   :: S    :: concat
         {{ tex [[w1]] \stackrel{bv} . [[w2]] }}
         {{ com -- concatenation }}
         {{ coq (existT _ _ (combine (projT2 [[w1]]) (projT2 [[w2]]))) }}
-   | ext word ~ hi : sz1 ~ lo : sz2           :: S    :: extend_extract
+   | ext w ~ hi : sz1 ~ lo : sz2           :: S    :: extend_extract
+        {{ tex [[ext]]\; [[w]] \sim [[hi]] : [[sz1]] \sim [[lo]] : [[sz2]] }}
         {{ com -- extract/extend }}
-        {{ coq (ext [[word]] [[sz1]] [[sz2]]) }}
-   | exts word ~ hi : sz1 ~ lo : sz2         :: S    :: extend_extract_signed
+        {{ coq (ext [[w]] [[sz1]] [[sz2]]) }}
+   | exts w ~ hi : sz1 ~ lo : sz2         :: S    :: extend_extract_signed
+        {{ tex [[exts]]\; [[w]] \sim [[hi]] : [[sz1]] \sim [[lo]] : [[sz2]] }}
         {{ com -- signed extract/extend }}
-        {{ coq (ext_signed [[word]] [[sz1]] [[sz2]]) }}
+        {{ coq (ext_signed [[w]] [[sz1]] [[sz2]]) }}
 
 
  bop :: binop_ ::= {{ coq-equality }}
@@ -578,7 +583,7 @@ defns typing_exp :: '' ::=
  G; Gl |- e2 :: t
  G; Gl |- e3 :: t
  -------------------------- :: ite
- G; Gl |- if e1 then e2 else e3 :: t
+ G; Gl |- ite e1 e2 e3 :: t
 
  G; Gl |- e :: imm<sz>
  sz1 >= sz2
@@ -770,26 +775,26 @@ defns reduce_exp :: '' ::=
 
  delta |- e1 ~> e1'
  ------------------------------------------------------------------ :: ite_step_cond
- delta |- if e1 then v2 else v3 ~> if e1' then v2 else v3
+ delta |- ite e1 v2 v3 ~> ite e1' v2 v3
 
  delta |- e2 ~> e2'
  ------------------------------------------------------------------ :: ite_step_then
- delta |- if e1 then e2 else v3 ~> if e1 then e2' else v3
+ delta |- ite e1 e2 v3 ~> ite e1 e2' v3
 
  delta |- e3 ~> e3'
  ------------------------------------------------------------------ :: ite_step_else
- delta |- if e1 then e2 else e3 ~> if e1 then e2 else e3'
+ delta |- ite e1 e2 e3 ~> ite e1 e2 e3'
 
  ----------------------------------------------- :: ite_true
- delta |- if true then v2 else v3 ~> v2
+ delta |- ite true v2 v3 ~> v2
 
 
  ------------------------------------------------ :: ite_false
- delta |- if false then v2 else v3 ~> v3
+ delta |- ite false v2 v3 ~> v3
 
  compute_type v2 = t'
  ------------------------------------------------------------------ :: ite_unk
- delta |- if unknown[str]:t then v2 else v3 ~> unknown[str]:t'
+ delta |- ite unknown[str]:t v2 v3 ~> unknown[str]:t'
 
  delta |- e2 ~> e2'
  ------------------------------------------ :: bop_rhs
@@ -1041,8 +1046,7 @@ defns reduce_stmt :: '' ::=
  delta,word |- {} ~> delta, word, {}
 
 
-% TODO: these rules are really broken; fix
-% they are currently in a big-step-ish style that doesn't work
+% TODO: the following rules do not function as intended
 defns program :: '' ::=
 
 
