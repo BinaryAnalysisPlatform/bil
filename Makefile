@@ -1,3 +1,4 @@
+
 LATEX = pdflatex
 
 OTT_FLAGS = -tex_wrap false -coq_lngen true
@@ -9,6 +10,15 @@ COQC=$(COQBIN)coqc
 COQTOP=$(COQBIN)coqtop
 COQDEP=$(COQBIN)coqdep $(DEPFLAGS)
 COQDOC=$(COQBIN)coqdoc
+
+EXPECTED_BBV_VERSION=08ab43a873f1cb574515589cfa2c56a9aa9bd023
+ACTUAL_BBV_VERSION=$(shell cd ../bbv && git rev-parse HEAD)
+
+ifneq ($(EXPECTED_BBV_VERSION),$(ACTUAL_BBV_VERSION))
+  $(error bbv library not in adjacent directory or of the wrong version.\
+HEAD should be $(EXPECTED_BBV_VERSION) but was $(ACTUAL_BBV_VERSION).\
+Make sure that you have the correct version from "https://github.com/mit-plv/bbv")
+endif
 
 
 all : bil.pdf Sized_Word.vo bil.vo
