@@ -1,18 +1,54 @@
+embed
+{{ coq
+Require Import List.
+Require Import String.
+Require Import bbv.Word.
+
+Definition bbv := word.
+
+Require Import bil.Sized_Word.
+
+Inductive var_id : Set :=
+| Reg_id (id : BinNums.Z) : var_id
+| Mem_id (id : BinNums.Z) : var_id
+| Tmp_id (id : BinNums.Z) : var_id.
+
+Definition list_mem := in_dec.
+Arguments list_mem {_}.
+Hint Unfold list_mem.
+
+Hint Resolve eq_word : ott_coq_equality.
+
+Inductive Nth {A : Set}: list A -> nat -> A -> Prop :=
+| is_first : forall a l, Nth (a :: l) 0 a
+| is_later : forall a' l n a, Nth l n a -> Nth (a'::l) (S n) a.
+
+}}
+
+embed {{ coq-lib list_mem }}
+
 indexvar index, m, n ::= {{ com subscripts}}
+                         {{ coq nat }} {{ coq-equality }}
 metavar id ::= {{ com a literal for variable}}
+               {{ coq var_id }}
+               {{ coq-equality decide equality; decide equality; decide equality. }}
 metavar num  ::= {{ com number literal }}
+                 {{ coq nat }} {{ coq-equality }}
 metavar string,str ::= {{ com quoted string literal }}
-
-
+                       {{ coq string }}
+                       {{ coq-equality exact string_dec. }}
+metavar lid ::= {{ com number literal }}
+                 {{ coq nat }} {{ coq-equality }}
 
 grammar
 
 
  insn :: insn_ ::=
-   | { addr = w1 ; size = w2; code = bil }      :: S    :: insn
+   | { addr = w1 ; size = w2; code = bil }      ::      :: insn
 
+ % TODO: represent bil as a native Coq list or no?
  bil,seq :: seq_ ::=
-   | { s1 ; .. ; sn }                           :: S    :: many
+   | { s1 ; .. ; sn }                           ::      :: many
 
  stmt,s :: stmt_ ::=
    | var := exp                                 ::      :: move
@@ -25,16 +61,24 @@ grammar
    {{ com -- instruction with unknown semantics  }}
    | while ( exp ) seq                          ::      :: while
    {{ com -- eval $seq$ while $exp$ is true }}
-   | if ( e ) seq                               :: S    :: ifthen
+   | if ( e ) seq                               ::      :: ifthen
    {{ com -- eval $seq$ if $e$ is true }}
    | if ( e ) seq1 else seq2                    ::      :: if
    {{ com -- if $e$ is true then eval $seq_1$ else $seq_2$ }}
 
 
- exp,e :: exp_ ::=
+ exp,e :: exp_ ::= {{ coq-equality }}
    | ( exp )                                    :: S    :: paren
+   {{coq ([[exp]])}}
    | var                                        ::      :: var
    {{ com -- a variable }}
+   | lid                                        ::      :: letvar
+   {{ com -- a let-bound variable }}
+   % TODO: break these out into another type for cleaner defs?
+   | 0                                          :: S     :: letvar0
+   {{ coq (exp_letvar O) }}
+   | S lid                                      :: S     :: letvarS
+   {{ coq (exp_letvar (S [[lid]])) }}
    | word                                       ::      :: int
    {{ com -- an immediate value }}
    | v [ w <- v' : sz ]                         ::      :: mem
@@ -49,21 +93,25 @@ grammar
    {{ com -- perform an unary operation on $e_1$}}
    | cast : nat [ e ]                           ::      :: cast
    {{ com -- extract or extend bitvector $e$ }}
-   | let var = e1 in e2                         ::      :: let
+   | let e1 : t in e2                           ::      :: let
    {{ com -- bind $e_1$ to $var$ in expression $e_2$}}
    | unknown [ string ] : type                  ::      :: unk
    {{ com -- unknown or undefined value of a given $type$ }}
-   | if e1 then e2 else e3                      ::      :: ite
+   | ite e1 e2 e3                      ::      :: ite
    {{ com -- evaluates to $e_2$ if $e_1$ is true else to $e_3$ }}
    | extract : nat1 : nat2 [ e ]                ::      :: ext
    {{ com -- extract or extend bitvector $e$}}
    | e1 @ e2                                    ::      :: concat
    {{ com -- concatenate two bitvector $e_1$ to $e_2$ }}
    | [ e1 / var ] e2                              :: M :: subst
-   {{ com -- the (capture avoiding) substitution of $e_1$ for $var$ in $e_2$ }}
+   {{ com -- the substitution of $e_1$ for $var$ in $e_2$ }}
+   {{ coq (subst_exp [[e1]] [[var]] [[e2]])}}
+   | [ e1 / 0 ] e2                              :: M :: letsubst
+   {{ com -- the (capture avoiding) substitution of $e_1$ for index $0$ in $e_2$ }}
+   {{ coq (letsubst [[e1]] [[0]] [[e2]])}}
 
- var :: var_ ::=
-   | id : type                                  :: S    :: var
+ var :: var_ ::= {{ coq-equality }}
+   | id : type                                 ::      :: var
 
  val,v :: val_ ::=
    | word                                      ::      :: imm
@@ -76,77 +124,101 @@ grammar
    | ( w )                                        :: S    :: paren
    {{ coq ([[w]])}}
    | 1 : nat                                   :: S    :: one
+   {{ coq (sized (wone [[nat]])) }}
    | true                                       :: S    :: true
    {{ com -- sugar for 1:1 }}
+   {{ coq (sized (wone 1)) }}
    | false                                      :: S    :: false
    {{ com -- sugar for 0:1 }}
+   {{ coq (sized (wzero 1)) }}
    | w1 .+ w2                                   :: S    :: plus
         {{ tex [[w1]] \stackrel{bv} + [[w2]] }}
         {{ com -- plus }}
+        {{ coq (sw_lift_binop wplus [[w1]] [[w2]]) }}
    | w1 .- w2                                   :: S    :: minus
         {{ tex [[w1]] \stackrel{bv} - [[w2]] }}
         {{ com -- minus }}
+        {{ coq (sw_lift_binop wminus [[w1]] [[w2]]) }}
    | w1 .* w2                                   :: S    :: times
         {{ tex [[w1]] \stackrel{bv} * [[w2]] }}
         {{ com -- times }}
+        {{ coq (sw_lift_binop wmult [[w1]] [[w2]]) }}
    | w1 ./ w2                                   :: S    :: div
         {{ tex [[w1]] \stackrel{bv} / [[w2]] }}
         {{ com -- division }}
+        {{ coq (sw_lift_binop wdiv [[w1]] [[w2]]) }}
    | w1 ./$ w2                                   :: S    :: sdiv
         {{ tex [[w1]] \stackrel{sbv} / [[w2]] }}
         {{ com -- signed division }}
+        {{ coq (sw_lift_binop wdivZ [[w1]] [[w2]]) }}
    | w1 .% w2                                   :: S    :: mod
         {{ tex [[w1]] \stackrel{bv} \% [[w2]] }}
         {{ com -- modulo }}
+        {{ coq (sw_lift_binop wmod [[w1]] [[w2]]) }}
    | w1 .%$ w2                                   :: S    :: smod
         {{ tex [[w1]] \stackrel{sbv} \% [[w2]] }}
         {{ com -- signed modulo }}
+        {{ coq (sw_lift_binop wremZ [[w1]] [[w2]]) }}
    | w1 .<< w2                                   :: S    :: lsl
         {{ tex [[w1]] \stackrel{bv} \ll [[w2]] }}
         {{ com -- logical shift left }}
+        {{ coq (sw_lift_shiftop wlshift [[w1]] [[w2]]) }}
    | w1 .>> w2                                   :: S    :: lsr
         {{ tex [[w1]] \stackrel{bv} \gg [[w2]] }}
         {{ com -- logical shift right }}
+        {{ coq (sw_lift_shiftop wrshift [[w1]] [[w2]]) }}
    | w1 .~>> w2                                   :: S    :: asr
         {{ tex [[w1]] \stackrel{bv} \ggg [[w2]] }}
         {{ com -- arithmetic shift right }}
+        {{ coq (sw_lift_shiftop wrshifta [[w1]] [[w2]]) }}
    | w1 .& w2                                   :: S    :: land
         {{ tex [[w1]] \stackrel{bv} \& [[w2]] }}
         {{ com -- bitwise and }}
+        {{ coq (sw_lift_binop wand [[w1]] [[w2]]) }}
    | w1 .| w2                                   :: S    :: lor
         {{ tex [[w1]] \stackrel{bv} | [[w2]] }}
         {{ com -- bitwise or }}
+        {{ coq (sw_lift_binop wor [[w1]] [[w2]]) }}
    | w1 .xor w2                                   :: S    :: xor
         {{ tex [[w1]] \stackrel{bv}{xor} [[w2]] }}
         {{ com -- bitwise xor }}
+        {{ coq (sw_lift_binop wxor [[w1]] [[w2]]) }}
    | w1 .< w2                                   :: S    :: less
         {{ tex [[w1]] \stackrel{bv} < [[w2]] }}
         {{ com -- less than }}
+        {{ coq (sw_lt [[w1]] [[w2]]) }}
    | w1 .<$ w2                                   :: S    :: signed_less
         {{ tex [[w1]] \stackrel{sbv} < [[w2]] }}
         {{ com -- signed less than }}
+        {{ coq (sw_slt [[w1]] [[w2]]) }}
    | .- w                                       :: S    :: lneg
         {{ tex \stackrel{bv} - [[w]] }}
+        {{ coq (sw_lift_uop wneg [[w]]) }}
         {{ com -- integer negation }}
    | .~ w                                       :: S    :: lnot
         {{ tex \stackrel{bv}{\sim} [[w]] }}
         {{ com -- logical negation }}
+        {{ coq (sw_lift_uop wnot [[w]]) }}
+
    | w1 .@ w2                                   :: S    :: concat
         {{ tex [[w1]] \stackrel{bv} . [[w2]] }}
         {{ com -- concatenation }}
+        {{ coq (existT _ _ (combine (projT2 [[w1]]) (projT2 [[w2]]))) }}
    | ext w ~ hi : sz1 ~ lo : sz2           :: S    :: extend_extract
         {{ tex [[ext]]\; [[w]] \sim [[hi]] : [[sz1]] \sim [[lo]] : [[sz2]] }}
         {{ com -- extract/extend }}
+        {{ coq (ext [[w]] [[sz1]] [[sz2]]) }}
    | exts w ~ hi : sz1 ~ lo : sz2         :: S    :: extend_extract_signed
         {{ tex [[exts]]\; [[w]] \sim [[hi]] : [[sz1]] \sim [[lo]] : [[sz2]] }}
         {{ com -- signed extract/extend }}
+        {{ coq (ext_signed [[w]] [[sz1]] [[sz2]]) }}
 
 
- bop :: binop_ ::=
+ bop :: binop_ ::= {{ coq-equality }}
    | aop                                      ::      :: arith  {{ com -- arithmetic operators}}
    | lop                                      ::      :: logical  {{ com -- logical operators}}
 
- aop :: arithop_ ::=
+ aop :: arithop_ ::= {{ coq-equality }}
    | +                                          ::      :: plus  {{ com -- plus}}
    | -                                          ::      :: minus {{ com -- minus}}
    | *                                          ::      :: times {{ com -- times}}
@@ -166,7 +238,7 @@ grammar
    | '~>>'                                      ::      :: arshift
         {{ com -- arithmetic shift right}}
 
- lop :: logicop_ ::=
+ lop :: logicop_ ::= {{ coq-equality }}
    | =                                          ::      :: eq  {{ com -- equality }}
    | <>                                         ::      :: neq {{ com -- non-equality }}
    | <                                          ::      :: lt  {{ com -- less than }}
@@ -177,23 +249,29 @@ grammar
    | '<=$'                                      ::      :: sle
         {{ tex \stackrel{signed} \leq }} {{ com -- signed less than or equal }}
 
- uop :: unop_ ::=
+ uop :: unop_ ::= {{ coq-equality }}
    | -                                          ::      :: neg {{ com -- unary negation}}
    | ~                                          ::      :: not {{ com -- bitwise complement}}
 
- nat,sz :: nat_ ::=
+ nat,sz :: nat_ ::= {{ coq nat }}
    | 0                                          :: M    :: zero
+   {{ coq 0 }}
    | 1                                          :: M    :: one
+   {{ coq 1 }}
    | 8                                          :: M    :: byte
+   {{ coq 8 }}
    | nat1 + nat2                                :: M    :: nat_plus
+   {{ coq ([[nat1]] + [[nat2]]) }}
    | nat1 - nat2                                :: M    :: nat_minus
+   {{ coq ([[nat1]] - [[nat2]]) }}
    | ( nat )                                    :: M    :: nat_paren
+   {{ coq [[nat]]}}
 
- endian,ed :: endian_ ::=
+ endian,ed :: endian_ ::= {{ coq-equality }}
    | el                                         ::      :: little {{ com -- little endian }}
    | be                                         ::      :: big    {{ com -- big endian }}
 
- cast :: cast_ ::=
+ cast :: cast_ ::= {{ coq-equality }}
    | low                                        ::      :: low {{ com -- extract lower bits }}
    | high                                       ::      :: high {{ com -- extract high bits}}
    | signed                                     ::      :: signed
@@ -209,24 +287,46 @@ grammar
    | low                                        ::      :: low
    | high                                       ::      :: high
 
- type,t :: type_ ::=
+ type,t :: type_ ::= {{ coq-equality }}
    | imm < sz >                                 ::      :: imm
    {{ com -- immediate of size $sz$}}
    | mem < sz1 , sz2 >                          ::      :: mem
    {{ com -- memory with address size $sz_1$ and element size $sz_2$}}
 
- delta {{ tex \Delta}} :: delta_ ::=
-   | []                                         ::      :: nil  {{ com -- empty }}
-   | delta [ var <- val ]                       ::      :: cons {{ com -- extend }}
+ delta {{ tex \Delta}} :: delta_ ::= {{coq (list (var * exp)) }}
+   | []                                         ::      :: nil
+   {{ com -- empty }}
+   {{ coq nil }}
+   | delta [ var <- val ]                       ::      :: cons
+   {{ com -- extend }}
+   {{ coq (cons ([[var]],[[val]]) [[delta]]) }}
 
- gamma {{ tex \Gamma }}, G {{ tex \Gamma }} :: gamma_ ::=
-   | []                                         ::      :: nil  {{ com -- empty }}
-   | gamma , var                                ::      :: cons {{ com -- extend }}
-   | [ var ]                                    :: S    :: singleton {{ com -- singleton list }}
+ gamma {{ tex \Gamma }}, G {{ tex \Gamma }} :: gamma_ ::= {{ coq (list var) }}
+   | []                                         ::      :: nil
+   {{ com -- empty }}
+   {{ coq nil }}
+   | gamma , var                                ::      :: cons
+   {{ com -- extend }}
+   {{ coq (cons [[var]] [[gamma]]) }}
+   | [ var ]                                    :: S    :: singleton
+   {{ com -- singleton list }}
+   {{ coq [ [[var]] ] }}
    | ( G )                                      :: S    :: parens
+   {{ coq ([[G]]) }}
    | dom( delta )                               :: M    :: dom_delta
    {{ tex \mathsf{dom}([[delta]])}}
    {{ com -- domain of a runtime binding context}}
+   {{ coq (map fst [[delta]]) }}
+
+ lgamma {{ tex \Gamma_l }}, Gl {{ tex \Gamma_l }} :: lgamma_ ::= {{ coq (list type) }}
+   | []                                         ::      :: nil
+   {{ com -- empty }}
+   {{ coq nil }}
+   | lgamma , type                              ::      :: cons
+   {{ com -- extend }}
+   {{ coq (cons [[type]] [[lgamma]]) }}
+   | ( Gl )                                     :: S    :: parens
+   {{ coq ([[Gl]]) }}
 
 formula :: formula_ ::=
  | judgement                ::   :: judgement
@@ -235,20 +335,29 @@ formula :: formula_ ::=
  | var1 <> var2             :: M :: exp_var {{ coq ([[var1]] <> [[var2]]) }}
  | w1 .<> w2                 :: M :: word_neq
  {{ tex [[w1]] <> [[w2]] }}
+ {{ coq ([[w1]] <> [[w2]]) }}
  | nat1 > nat2              :: M :: nat_gt {{ coq ([[nat1]] > [[nat2]])}}
  | nat1 = nat2              :: M :: nat_eq {{ coq ([[nat1]] = [[nat2]])}}
  | nat1 >= nat2             :: M :: nat_ge {{ coq ([[nat1]] >= [[nat2]])}}
  | nat1 % sz = 0            :: M :: nat_mod_z {{ coq (exists n_, [[nat1]] = n_ * [[sz]]) }}
- | t1 = t2       :: M :: type_eq
- {{ coq ([[t1]] = [[t2]]) }}
+ | typeof ( v ) = t       :: M :: compute_type_of_v
+ {{ tex [[type]] ( [[v]] ) = [[t]] }}
+ {{ coq (compute_type [[v]] = [[t]]) }}
  | e1 :=def e2              :: M :: defines
      {{ tex [[e1]] \stackrel{\text{def} }{:=} [[e2]] }}
+     {{ coq ([[e1]] = [[e2]]) }}
  | ( var , val ) isin delta   :: M :: in_env
+   {{ coq (In ([[var]],[[val]]) [[delta]]) }}
  | var notin dom ( delta )   :: M :: notin_env
    {{ tex [[var]] [[notin]] \mathsf{dom}([[delta]]) }}
+   {{ coq (~ (In [[var]] (map fst [[delta]]))) }}
  |  var isin gamma   :: M :: in_ctx
+   {{ coq (In [[var]] [[gamma]]) }}
  | id notin dom ( gamma )   :: M :: notin_ctx
    {{ tex [[id]] [[notin]] \mathsf{dom}([[gamma]]) }}
+   {{ coq (~ (In [[id]] (map (fun v => match v with var_var id _ => id end) [[gamma]]))) }}
+ | Gl ( lid ) = t           :: M :: lgamma_nth
+   {{ coq (Nth [[Gl]] [[lid]] [[t]]) }}
 
 terminals :: terminals_ ::=
   | ->				::   ::	rarrow					{{ tex \rightarrow }}
@@ -266,19 +375,90 @@ terminals :: terminals_ ::=
   | isin        :: :: in {{ tex \in }}
   | notin     :: :: notin {{ tex \notin }}
 
+
 subrules
   val <:: exp
   widen_cast <:: cast
   narrow_cast <:: cast
 
-funs
-  Compute ::=
-fun
-  type ( v ) :: t :: compute_type {{ com a function that computes the type of a value }}
-by
-  type(v[num1:nat <- v' : sz]) === mem<nat,sz>
-  type(num:nat) === imm<nat>
-  type(unknown[str]:t) === t
+substitutions
+        single exp var :: subst
+
+freevars
+        exp var :: fv
+
+embed
+{{ coq
+
+Bind Scope bil_exp_scope with exp.
+Reserved Notation "[ es ./ i ]" (at level 70, no associativity).
+Notation "[m: e , w <- w' @ sz ]" := (exp_mem e w w' sz) (at level 79) : bil_exp_scope.
+
+Definition compute_type (e : exp) : type :=
+  match e with
+  | exp_int w => type_imm (projT1 w)
+  | exp_mem _ w _ sz => type_mem (projT1 w) sz
+  | exp_unk _ t => t
+  | exp_var _ => type_imm 0
+  | exp_letvar _ => type_imm 0
+  | exp_load _ _ _ _ => type_imm 0
+  | exp_store em ea ed sz ev => type_imm 0
+  | exp_binop e1 bop e2 => type_imm 0
+  | exp_unop uop e => type_imm 0
+  | exp_cast c sz e => type_imm 0
+  | exp_let e1 t e2 => type_imm 0
+  | exp_ite e1 e2 e3 => type_imm 0
+  | exp_ext hi lo e => type_imm 0
+  | exp_concat e1 e2 => type_imm 0
+  end.
+
+Fixpoint lift m n (e : exp) {struct e} : exp :=
+  match e with
+  | exp_var var5 => exp_var var5
+  | exp_letvar lid => exp_letvar (if lt_dec lid n then lid else (m + lid))
+  | exp_int word5 => exp_int word5
+  | exp_mem v w v' sz => exp_mem v w v' sz
+  | exp_load e1 e2 endian5 nat5 => exp_load (lift m n e1) (lift m n e2) endian5 nat5
+  | exp_store e1 e2 endian5 nat5 e3 =>
+    exp_store (lift m n e1) (lift m n e2) endian5 nat5 (lift m n e3)
+  | exp_binop e1 bop5 e2 => exp_binop (lift m n e1) bop5 (lift m n e2)
+  | exp_unop uop5 e => exp_unop uop5 (lift m n e)
+  | exp_cast cast5 nat5 e => exp_cast cast5 nat5 (lift m n e)
+  | exp_let e t eb => exp_let (lift m n e) t (lift m (S n) eb)
+  | exp_unk string5 type5 => exp_unk string5 type5
+  | exp_ite e1 e2 e3 => exp_ite (lift m n e1) (lift m n e2) (lift m n e3)
+  | exp_ext hi lo e => exp_ext hi lo (lift m n e)
+  | exp_concat e1 e2 => exp_concat (lift m n e1) (lift m n e2)
+  end.
+
+Notation "^ n" := (lift n 0) (at level 9, right associativity) : bil_exp_scope.
+
+Fixpoint letsubst (es : exp) (i : lid) (e : exp) : exp :=
+  match e with
+  | exp_var v => exp_var v
+  | exp_letvar i' =>
+    match lt_eq_lt_dec i i' with
+    | inleft (left _) => exp_letvar (i' - 1)
+    | inleft (right _) => ^i es
+    | inright _ => exp_letvar i'
+    end
+  | exp_int w => exp_int w
+  (* The arguments are values and therefore closed *)
+  | exp_mem v w v' sz => exp_mem v w v' sz
+  | exp_load em ea ed sz => exp_load ([es./i]em) ([es./i]ea) ed sz
+  | exp_store em ea ed sz ev => exp_store ([es./i]em) ([es./i]ea) ed sz ([es./i]ev)
+  | exp_binop e1 bop e2 => exp_binop ([es./i]e1) bop ([es./i]e2)
+  | exp_unop uop e => exp_unop uop ([es./i]e)
+  | exp_cast c sz e => exp_cast c sz ([es./i]e)
+  | exp_let e1 t e2 => exp_let ([es./i]e1) t ([es./S i]e2)
+  | exp_unk s t => exp_unk s t
+  | exp_ite e1 e2 e3 => exp_ite ([es./i]e1) ([es./i]e2) ([es./i]e3)
+  | exp_ext hi lo e => exp_ext hi lo ([es./i]e)
+  | exp_concat e1 e2 => exp_concat ([es./i]e1) ([es./i]e2)
+  end
+where "[ es ./ i ]" := (letsubst es i) : bil_exp_scope.
+
+}}
 
 defns typing_type :: '' ::=
  defn t is ok :: :: type_wf :: twf_ by
@@ -304,98 +484,117 @@ defns typing_gamma :: '' ::=
  --------------- :: cons
  (G, id:t) is ok
 
+ defn Gl is ok :: :: typ_lgamma :: tlg_ by
+
+ --------- :: nil
+ [] is ok
+
+ t is ok
+ Gl is ok
+ --------------- :: cons
+ (Gl, t) is ok
+
 defns typing_exp :: '' ::=
- defn G |- exp '::' type :: :: type_exp :: t_ by
+ defn G ; Gl |- exp '::' type :: :: type_exp :: t_ by
 
  id:t isin G
  G is ok
+ Gl is ok
  ----------------- :: var
- G |- id:t :: t
+ G; Gl |- id:t :: t
+
+ Gl(lid) = t
+ G is ok
+ Gl is ok
+ ----------------- :: letvar
+ G; Gl |- lid :: t
 
  sz > 0
  G is ok
+ Gl is ok
  ----------------- :: int
- G |- num:sz :: imm<sz>
+ G; Gl |- num:sz :: imm<sz>
 
 
  sz > 0
  nat > 0
- G |- v :: mem<nat,sz>
- G |- v' :: imm<sz>
+ G; Gl |- v :: mem<nat,sz>
+ G; Gl |- v' :: imm<sz>
  ---------------------------------------------------------- :: mem
- G |- v[num1:nat <- v' : sz] :: mem<nat,sz>
+ G; Gl |- v[num1:nat <- v' : sz] :: mem<nat,sz>
 
 
  sz' % sz = 0
  sz' > 0
- G |- e1 :: mem<nat,sz>
- G |- e2 :: imm<nat>
+ G; Gl |- e1 :: mem<nat,sz>
+ G; Gl |- e2 :: imm<nat>
  -------------------------- :: load
- G |- e1 [e2, ed] : sz' :: imm<sz'>
+ G; Gl |- e1 [e2, ed] : sz' :: imm<sz'>
 
 
  sz' % sz = 0
  sz' > 0
- G |- e1 :: mem<nat,sz>
- G |- e2 :: imm<nat>
- G |- e3 :: imm<sz'>
+ G; Gl |- e1 :: mem<nat,sz>
+ G; Gl |- e2 :: imm<nat>
+ G; Gl |- e3 :: imm<sz'>
  --------------------------------------------- :: store
- G |- e1 with [e2, ed]:sz' <- e3 :: mem<nat,sz>
+ G; Gl |- e1 with [e2, ed]:sz' <- e3 :: mem<nat,sz>
 
 
- G |- e1 :: imm<sz>
- G |- e2 :: imm<sz>
+ G; Gl |- e1 :: imm<sz>
+ G; Gl |- e2 :: imm<sz>
  --------------------------------- :: aop
- G |- e1 aop e2 :: imm<sz>
+ G; Gl |- e1 aop e2 :: imm<sz>
 
- G |- e1 :: imm<sz>
- G |- e2 :: imm<sz>
+ G; Gl |- e1 :: imm<sz>
+ G; Gl |- e2 :: imm<sz>
  --------------------------------- :: lop
- G |- e1 lop e2 :: imm<1>
+ G; Gl |- e1 lop e2 :: imm<1>
 
- G |- e1 :: imm<sz>
+ G; Gl |- e1 :: imm<sz>
  ---------------------------------- :: uop
- G |- uop e1 :: imm<sz>
+ G; Gl |- uop e1 :: imm<sz>
 
  sz > 0
  sz >= nat
- G |- e :: imm<nat>
+ G; Gl |- e :: imm<nat>
  ------------------------------------- :: cast_widen
- G |- widen_cast:sz[e] :: imm<sz>
+ G; Gl |- widen_cast:sz[e] :: imm<sz>
 
  sz > 0
  nat >= sz
- G |- e :: imm<nat>
+ G; Gl |- e :: imm<nat>
  ------------------------------------- :: cast_narrow
- G |- narrow_cast:sz[e] :: imm<sz>
+ G; Gl |- narrow_cast:sz[e] :: imm<sz>
 
- G |- e1  :: t
- G, id:t |- e2  :: t'
- ------------------------ :: let
- G |- let id:t = e1 in e2 :: t'
+ G; Gl |- e1  :: t
+ G; Gl,t |- e2 :: t'
+ -------------------------- :: let
+ G; Gl |- let e1 : t in e2 :: t'
 
  t is ok
  G is ok
+ Gl is ok
  ------------------------- :: unknown
- G |- unknown[str]:t :: t
+ G; Gl |- unknown[str]:t :: t
 
 
- G |- e1 :: imm<1>
- G |- e2 :: t
- G |- e3 :: t
+ G; Gl |- e1 :: imm<1>
+ G; Gl |- e2 :: t
+ G; Gl |- e3 :: t
  -------------------------- :: ite
- G |- if e1 then e2 else e3 :: t
+ G; Gl |- ite e1 e2 e3 :: t
 
- G |- e :: imm<sz>
+ G; Gl |- e :: imm<sz>
  sz1 >= sz2
  ---------------------------------- :: extract
- G |- extract:sz1:sz2[e] :: imm<sz1-sz2+1>
+ G; Gl |- extract:sz1:sz2[e] :: imm<(sz1-sz2)+1>
 
 
- G |- e1 :: imm<sz1>
- G |- e2 :: imm<sz2>
+ G; Gl |- e1 :: imm<sz1>
+ G; Gl |- e2 :: imm<sz2>
  ---------------------------------- :: concat
- G |- e1 @ e2 :: imm<sz1+sz2>
+ G; Gl |- e1 @ e2 :: imm<sz1+sz2>
 
 defns typing_stmt :: '' ::=
 
@@ -405,22 +604,22 @@ defns typing_stmt :: '' ::=
  ------------------------------ :: seq_one
  G |- {stmt} is ok
 
- G |- s1 is ok
- G |- {s2; ..; sn} is ok
+ G |- s is ok
+ G |- {s1; ..; sn} is ok
  ------------------------------ :: seq_rec
- G |- {s1; s2; ..; sn} is ok
+ G |- {s; s1; ..; sn} is ok
 
 
  defn G |- stmt is ok :: :: type_stmt :: t_ by
 
 
- G |- var :: t
- G |- exp :: t
+ G;[] |- var :: t
+ G;[] |- exp :: t
  --------------------------- :: move
  G |- var := exp is ok
 
 
- G |- exp :: imm<nat>
+ G;[] |- exp :: imm<nat>
  --------------------------- :: jmp
  G |- jmp exp is ok
 
@@ -433,53 +632,47 @@ defns typing_stmt :: '' ::=
  G |- special(str) is ok
 
 
- G |- e :: imm<1>
+ G;[] |- e :: imm<1>
  G |- seq is ok
  ---------------------------- :: while
  G |- while (e) seq is ok
 
 
- G |- e :: imm<1>
+ G;[] |- e :: imm<1>
  G |- seq is ok
  ---------------------------- :: ifthen
  G |- if (e) seq is ok
 
 
- G |- e :: imm<1>
+ G;[] |- e :: imm<1>
  G |- seq1 is ok
  G |- seq2 is ok
  ---------------------------- :: if
  G |- if (e) seq1 else seq2 is ok
 
+defns typing_delta :: '' ::=
 
+ defn |- delta is ok :: :: type_delta :: td_ by
 
-defns program :: '' ::=
+ ---------------------- :: empty
+ |- [] is ok
 
-
- defn delta , w , var ~> delta' , w' , var' :: :: step :: '' by
-
- delta,w,var |-> {addr=w1; size=w2; code=bil}
- delta, w1.+w2 |- bil ~> delta',w3,{}
- ---------------------------------------------------------- :: step
- delta,w,var  ~> delta',w3,var
-
-
- defn delta,w,var |-> insn :: :: decode :: '' by
-
- -------------------------------------------------- :: decode
- delta,w,var |-> insn
-
+ |- delta is ok
+ [];[] |- v :: type
+ ---------------------- :: value
+ |- delta [id:type <- v] is ok
 
 defns helpers :: '' ::=
  defn succ w1 = exp :: :: succ :: '' by
 
- -------------------------------- :: succ
+ -------------------------------- :: succ_rule
  succ num:sz = num:sz .+ 1:sz
 
 
 defns reduce_exp :: '' ::=
 
- defn delta |- exp ~> exp' :: :: exp :: '' by
+%TODO: prefix by step only in coq?
+ defn delta |- exp ~> exp' :: :: exp_step :: 'step_' by
 
  (var,v) isin delta
 ------------------ :: var_in
@@ -513,18 +706,19 @@ defns reduce_exp :: '' ::=
  ---------------------------------------------------------- :: load_un_mem
  delta |- (unknown[str]:t)[v,ed]:sz ~> unknown[str]:imm<sz>
 
+
  ------------------------------------------------------------------------- :: load_un_addr
  delta |- (v[w1 <- v':sz])[unknown[str]:t,ed]:sz' ~> unknown[str]:imm<sz'>
 
  sz' > sz
  succ w = w'
- type(v) = mem<nat,sz>
+ typeof(v) = mem<nat,sz>
  ------------------------------------------------------------- :: load_word_be
  delta |- v[w,be]:sz' ~> v[w,be]:sz @ (v[w', be]:(sz'-sz))
 
  sz' > sz
  succ w = w'
- type(v) = mem<nat,sz>
+ typeof(v) = mem<nat,sz>
  -------------------------------------------------------- :: load_word_el
  delta |- v[w,el]:sz' ~> v[w',el]:(sz'-sz) @ (v[w,be]:sz)
 
@@ -550,45 +744,57 @@ defns reduce_exp :: '' ::=
 
  sz' > sz
  succ w = w'
- type(v) = mem<nat,sz>
+ typeof(v) = mem<nat,sz>
  e1 :=def (v with [w,be]:sz <- high:sz[val])
  ---------------------------------------------------------------------------------- :: store_word_be
  delta |- v with [w,be]:sz' <- val ~> e1 with [w',be]:(sz'-sz) <- low:(sz'-sz)[val]
 
  sz' > sz
  succ w = w'
- type(v) = mem<nat,sz>
+ typeof(v) = mem<nat,sz>
  e1 :=def (v with [w,el]:sz <- low:sz[val])
  -------------------------------------------------------------------------------- :: store_word_el
  delta |- v with [w,el]:sz' <- val ~> e1 with [w',el]:(sz'-sz) <- high:(sz'-sz)[val]
 
- type(v) = mem<nat,sz>
+ typeof(v) = mem<nat,sz>
  --------------------------------------------------------- :: store_val
  delta |- v with [w,ed] : sz <- v' ~> v[w <- v' : sz]
 
- type(v) = t
- ----------------------------------------------------------------------- :: store_un_addr
+ typeof(v) = t
+ -------------------------------------------------------------------- :: store_un_addr
  delta |- v with [unknown[str]:t',ed] : sz' <- v2 ~> unknown[str]:t
 
  delta |- e1 ~> e1'
- ------------------------------------------------ :: let_step
- delta |- let var = e1 in e2 ~> let var = e1' in e2
+ --------------------------------------------------------- :: let_step
+ delta |- let e1 : t in e2 ~> let e1' : t in e2
 
 
- ------------------------------------------------- :: let
- delta |- let var = v in e ~> [v/var]e
+ ------------------------------------------------- :: let_subst
+ delta |- let v : t in e ~> [v/0]e
 
 
  delta |- e1 ~> e1'
- ------------------------------------------------------------------ :: ite_step
- delta |- if e1 then e2 else e3 ~> if e1' then e2 else e3
+ ------------------------------------------------------------------ :: ite_step_cond
+ delta |- ite e1 v2 v3 ~> ite e1' v2 v3
+
+ delta |- e2 ~> e2'
+ ------------------------------------------------------------------ :: ite_step_then
+ delta |- ite e1 e2 v3 ~> ite e1 e2' v3
+
+ delta |- e3 ~> e3'
+ ------------------------------------------------------------------ :: ite_step_else
+ delta |- ite e1 e2 e3 ~> ite e1 e2 e3'
 
  ----------------------------------------------- :: ite_true
- delta |- if true then e2 else e3 ~> e2
+ delta |- ite true v2 v3 ~> v2
 
 
  ------------------------------------------------ :: ite_false
- delta |- if false then e2 else e3 ~> e3
+ delta |- ite false v2 v3 ~> v3
+
+ typeof(v2) = t'
+ ------------------------------------------------------------------ :: ite_unk
+ delta |- ite unknown[str]:t v2 v3 ~> unknown[str]:t'
 
  delta |- e2 ~> e2'
  ------------------------------------------ :: bop_rhs
@@ -656,6 +862,7 @@ defns reduce_exp :: '' ::=
  ----------------------------------------------- :: xor
  delta |- w1 xor w2 ~> w1 .xor w2
 
+
  ----------------------------------------------- :: eq_same
  delta |- w = w ~> true
 
@@ -670,6 +877,7 @@ defns reduce_exp :: '' ::=
  w1 .<> w2
  ----------------------------------------------- :: neq_diff
  delta |- w1 <> w2 ~> true
+
 
  ----------------------------------------------- :: less
  delta |- w1 < w2 ~> w1 .< w2
@@ -710,11 +918,11 @@ defns reduce_exp :: '' ::=
  ---------------------------------------- :: concat_lhs
  delta |- e1 @ v2 ~> e1' @ v2
 
- type(v2) = imm<sz2>
+ typeof(v2) = imm<sz2>
  ----------------------------------------------------------------- :: concat_lhs_un
  delta |- unknown[str]:imm<sz1> @ v2 ~> unknown[str]:imm<sz1 +sz2>
 
- type(v1) = imm<sz1>
+ typeof(v1) = imm<sz1>
  ---------------------------------------------------------------- :: concat_rhs_un
  delta |- v1 @ unknown[str]:imm<sz2> ~> unknown[str]:imm<sz1 +sz2>
 
@@ -743,7 +951,7 @@ defns reduce_exp :: '' ::=
  delta |- low:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
 
 
- ----------------------------------------------------------- :: cast_high
+ ----------------------------------------------------------------- :: cast_high
  delta |- high:sz[num:sz'] ~> ext num:sz' ~hi:(sz'-1) ~lo:(sz'-sz)
 
 
@@ -754,9 +962,23 @@ defns reduce_exp :: '' ::=
  delta |- unsigned:sz[w] ~> ext w ~hi:(sz-1) ~lo:0
 
 
+
+defns multistep_exp :: '' ::=
+
+ defn delta |- exp ~>* exp' :: :: mexp :: '' by
+
+ ---------------- :: refl
+ delta |- e ~>*  e
+
+ delta |- e1 ~> e2
+ delta |- e2 ~>* e3
+ ------------------ :: reduce
+ delta |- e1 ~>* e3
+
+
 defns reduce_stmt :: '' ::=
 
- defn delta , word |- stmt ~> delta' , word' :: :: stmt :: '' by
+ defn delta , word |- stmt ~> delta' , word' :: :: stmt_step :: '' by
 
 
  delta |- e ~>* v
@@ -805,11 +1027,11 @@ defns reduce_stmt :: '' ::=
 
 
 
- defn delta , word |- seq ~> delta' , word' , seq' :: :: seq :: '' by
+ defn delta , word |- seq ~> delta' , word' , seq' :: :: seq_step :: '' by
 
- delta,word |- s1 ~> delta',word'
+ delta,word |- s ~> delta',word'
  ------------------------------------------------------------- :: seq_rec
- delta,word |- {s1; s2; ..; sn} ~> delta', word', {s2; ..; sn}
+ delta,word |- {s; s1; ..; sn} ~> delta', word', {s1; ..; sn}
 
  delta,word |- s1 ~> delta',word'
  ------------------------------------------------------------- :: seq_last
@@ -822,15 +1044,21 @@ defns reduce_stmt :: '' ::=
 
  ------------------------------------------------------------- :: seq_nil
  delta,word |- {} ~> delta, word, {}
- 
-defns multistep_exp :: '' ::=
 
- defn delta |- exp ~>* exp' :: :: mexp :: '' by
 
- ---------------- :: refl
- delta |- e ~>*  e
+% TODO: the following rules do not function as intended
+defns program :: '' ::=
 
- delta |- e1 ~> e2
- delta |- e2 ~>* e3
- ------------------ :: reduce
- delta |- e1 ~>* e3
+
+ defn delta , w , var ~> delta' , w' , var' :: :: step :: '' by
+
+ delta,w,var |-> {addr=w1; size=w2; code=bil}
+ delta, (w1.+w2) |- bil ~> delta',w3, {}
+ ---------------------------------------------------------- :: step_rule
+ delta,w,var  ~> delta',w3,var
+
+
+ defn delta , w , var |-> insn :: :: decode :: '' by
+
+ -------------------------------------------------- :: decode_rule
+ delta,w,var |-> insn
